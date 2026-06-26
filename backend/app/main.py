@@ -11,10 +11,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import UPLOAD_DIR, get_connection, init_db, rows_to_dicts
 from app.schemas import InvoicePayload, ResolvePayload
-from app.services.reconciliation import calculate_match_score, classify_match, match_reason
+from app.services.reconciliation import (
+    calculate_match_score,
+    classify_match,
+    is_reconciliation_candidate,
+    match_reason,
+)
 from app.services.reporting import build_reconciliation_report
-from app.services.validation import validate_invoice, validation_status
-from app.utils import decode_bytes, extract_invoice_fields, parse_amount, parse_csv_bytes, parse_date
+from app.services.validation import validate_bank_transaction, validate_invoice, validation_status
+from app.utils import decode_bytes, extract_invoice_fields, parse_amount, parse_date, parse_tabular_file_bytes
 
 
 app = FastAPI(title="FinRecon AI API", version="0.1.0")
@@ -29,14 +34,12 @@ app.add_middleware(
 
 
 VALIDATION_EXCEPTION_TYPES = {
-    "missing_invoice_number",
-    "missing_invoice_date",
-    "future_invoice_date",
-    "invalid_total_amount",
-    "negative_vat",
-    "total_mismatch",
-    "unknown_vendor",
-    "duplicate_invoice_number",
+    "missing_required_field",
+    "date_mismatch",
+    "vendor_mismatch",
+    "duplicate_invoice",
+    "low_ocr_confidence",
+    "amount_mismatch",
 }
 
 
