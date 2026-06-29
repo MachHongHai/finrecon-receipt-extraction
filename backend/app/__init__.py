@@ -1,2 +1,1 @@
-"""FinRecon AI backend package."""
-
+"""FinRecon Receipt AI backend package."""

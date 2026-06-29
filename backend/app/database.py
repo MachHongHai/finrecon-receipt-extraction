@@ -82,7 +82,6 @@ def _sqlite_compat_migration() -> None:
             "status": "VARCHAR(32) DEFAULT 'active'",
         },
         "invoice_batches": {},
-        "sample_generated_files": {},
         "uploaded_files": {"company_id": "INTEGER", "batch_id": "INTEGER"},
         "processing_jobs": {"company_id": "INTEGER", "batch_id": "INTEGER"},
         "invoices": {

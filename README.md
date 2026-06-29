@@ -1,23 +1,23 @@
-# FinRecon AI
+# FinRecon Receipt AI
 
-AI Invoice Control & Payment Reconciliation Platform with a FastAPI backend and React frontend.
+AI receipt capture, vendor payable control, and payment reconciliation for small F&B businesses.
 
-The system prioritizes structured invoice inputs such as Excel exports and e-invoice XML. PDF/image files are treated as attachments or OCR fallback when structured data is unavailable.
+The product focus is small restaurant/vendor paperwork: photographed purchase receipts, delivery notes, simple sales invoices, payment batches, and bank statements. The trained field extractor targets four receipt fields first: `seller`, `address`, `timestamp`, and `total_cost`.
 
 ## What is included
 
 - Vendor master CSV import
 - Bank statement CSV/Excel import
-- Invoice register CSV/Excel import as the primary invoice source
-- E-invoice XML import normalized to the same invoice schema
-- Invoice PDF/image attachments with optional OCR fallback
+- Purchase receipt register CSV/Excel import
+- E-invoice XML import as a secondary structured source
+- Receipt PDF/image attachments with optional OCR fallback
 - Payment approval and payment batch workflow
-- Single and batch fallback invoice upload with local file storage
+- Single and batch receipt upload with local file storage
 - Processing jobs and batch tracking
-- OCR extraction with synthetic metadata fallback for sample invoices
+- OCR extraction with fallback parsing for uploaded receipt files
 - OCR review form and audit logging
-- Manual invoice creation
-- Invoice validation rules
+- Manual receipt creation
+- Receipt validation rules
 - Configurable rule-based reconciliation scoring
 - Reconciliation workspace with approve/reject actions
 - Exception workflow with status and notes
@@ -88,7 +88,7 @@ transaction_id,transaction_date,value_date,account_number,description,amount,dir
 
 Dates should use `YYYY-MM-DD` or `DD/MM/YYYY`. Amounts can include separators such as `6,050,000`.
 
-Invoice register columns:
+Purchase receipt register columns. These keep legacy column names such as `invoice_id` for API/database compatibility, but they represent receipt IDs in the current product:
 
 ```csv
 invoice_id,invoice_number,invoice_series,invoice_template_code,invoice_date,due_date,vendor_id,vendor_name,vendor_tax_code,vendor_bank_account,buyer_name,buyer_tax_code,subtotal,vat_rate,vat_amount,total_amount,currency,invoice_status,source_type,attachment_file,expected_case
@@ -100,16 +100,13 @@ Payment batch columns:
 payment_id,invoice_id,vendor_id,scheduled_payment_date,approved_amount,currency,approval_status,approved_by,approved_at,payment_method,notes
 ```
 
-## Sample inputs
+## Training and archived datasets
 
-Synthetic demo inputs live in `sample_inputs/`. Generate the full sample dataset with:
+Legacy synthetic inputs have been removed. OCR/field-extractor work now uses the dataset archive under `archive/source_mcocr` and prepared training outputs under `archive/prepared/`. The recommended clean PaddleOCR/LayoutXLM training dataset is `archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser`.
 
-```bash
-pip install -r sample_inputs/requirements.txt
-python sample_inputs/scripts/generate_all_inputs.py
-```
+The clean rule keeps keyword/context annotations for `TOTAL_COST` and `TIMESTAMP` instead of demoting lines such as "Tong cong", "Thanh toan", "Ngay ban", or "Thoi gian" just because the line itself has no amount/date value. Empty-text or invalid-geometry annotations are skipped from training instead of being relabeled as `OTHER`.
 
-The generator creates vendor master CSV/XLSX, invoice register CSV/XLSX, 50 e-invoice XML files, 50 PDF attachments, payment batch CSV/XLSX, bank statement CSV/XLSX, expected reconciliation results, and processed sample outputs.
+MC-OCR's `boxes_and_transcripts` files contain blank transcript cells for some target-field boxes. The prepare step uses `mcocr_train_df.csv` as the authoritative source for target-field text, recovers blank target boxes when bbox overlap is high, appends missing CSV target annotations, and ignores blank `OTHER` boxes.
 
 ## Reconciliation scoring
 
@@ -118,11 +115,13 @@ The backend computes match candidates with:
 - 45% amount similarity
 - 25% date proximity
 - 20% vendor similarity
-- 10% invoice number or reference similarity
+- 10% receipt/reference similarity
 
 The report endpoint only explains backend-computed results. It does not calculate financial totals with an LLM.
 
 ## Main MVP endpoints
+
+Note: public endpoint paths still use `/api/invoices/*` internally for compatibility with the existing database schema. In the product UI and docs, these records are purchase receipts/phiếu nhập.
 
 - `POST /api/vendors/import`
 - `GET /api/vendors`

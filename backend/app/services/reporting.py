@@ -15,9 +15,9 @@ def build_reconciliation_report(
     ]
 
     lines = [
-        "FinRecon AI reconciliation report",
+        "FinRecon Receipt AI - receipt control and payment reconciliation report",
         "",
-        f"Processed invoices: {overview['total_invoices']}",
+        f"Processed purchase receipts: {overview['total_invoices']}",
         f"Imported bank transactions: {overview['total_transactions']}",
         f"Matched rate: {overview['matched_rate']}%",
         f"Open exceptions: {overview['open_exceptions']}",
@@ -27,7 +27,7 @@ def build_reconciliation_report(
         f"- Matched: {overview['matched_count']}",
         f"- Partially matched: {overview['partially_matched_count']}",
         f"- Amount mismatches: {overview['amount_mismatch_count']}",
-        f"- Unmatched invoices: {overview['unmatched_invoice_count']}",
+        f"- Unpaid or unmatched receipts: {overview['unmatched_invoice_count']}",
         f"- Unmatched transactions: {overview['unmatched_transaction_count']}",
     ]
 
@@ -48,9 +48,8 @@ def build_reconciliation_report(
             [
                 "",
                 "Best automated match:",
-                f"- {best.get('invoice_number') or 'Invoice'} to {best.get('transaction_id') or 'transaction'} with score {best.get('match_score')}",
+                f"- {best.get('invoice_number') or 'Receipt'} to {best.get('transaction_id') or 'transaction'} with score {best.get('match_score')}",
             ]
         )
 
     return "\n".join(lines)
-

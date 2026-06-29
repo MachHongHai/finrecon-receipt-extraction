@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import importlib.util
 import json
-import mimetypes
 import os
-import sys
 import uuid
-import zipfile
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from io import BytesIO
@@ -35,7 +31,6 @@ from app.models import (
     ReconciliationMatch,
     ReconciliationRule,
     PaymentBatch,
-    SampleGeneratedFile,
     UploadedFile,
     User,
     Vendor,
@@ -57,7 +52,7 @@ from app.utils import (
 )
 
 
-app = FastAPI(title="FinRecon AI API", version="1.0.0")
+app = FastAPI(title="FinRecon Receipt AI API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -529,19 +524,19 @@ def run_invoice_validation(db: Session, clear_existing: bool = True) -> dict[str
             if vendor.status != "active":
                 issues.append({"type": "vendor_not_found", "severity": "high", "message": "Vendor is inactive."})
             if invoice.vendor_tax_code and vendor.tax_code and invoice.vendor_tax_code != vendor.tax_code:
-                issues.append({"type": "invalid_tax_code", "severity": "high", "message": "Invoice tax code does not match vendor master."})
+                issues.append({"type": "invalid_tax_code", "severity": "high", "message": "Receipt vendor tax code does not match vendor master."})
             if invoice.vendor_bank_account and vendor.bank_account and invoice.vendor_bank_account != vendor.bank_account:
-                issues.append({"type": "vendor_bank_mismatch", "severity": "high", "message": "Invoice bank account does not match vendor master."})
+                issues.append({"type": "vendor_bank_mismatch", "severity": "high", "message": "Receipt bank account does not match vendor master."})
         if invoice.subtotal is not None and invoice.vat_amount is not None and invoice.total_amount is not None:
             diff = abs((float(invoice.subtotal) + float(invoice.vat_amount)) - float(invoice.total_amount))
             if diff > float(rules.get("vat_tolerance", 1)):
-                issues.append({"type": "vat_total_mismatch", "severity": "high", "message": f"Subtotal plus VAT differs from total by {diff:,.0f}."})
+                issues.append({"type": "vat_total_mismatch", "severity": "high", "message": f"Subtotal plus tax differs from total by {diff:,.0f}."})
         amounts = vendor_amounts.get(invoice.vendor_id or "", [])
         normal_amounts = [amount for amount in amounts if amount > 0 and amount != float(invoice.total_amount or 0)]
         if invoice.expected_case == "unusual_amount" or (
             normal_amounts and invoice.total_amount and float(invoice.total_amount) > (sum(normal_amounts) / len(normal_amounts)) * 6
         ):
-            issues.append({"type": "unusual_amount", "severity": "medium", "message": "Invoice amount is unusually high for this vendor."})
+            issues.append({"type": "unusual_amount", "severity": "medium", "message": "Receipt amount is unusually high for this vendor."})
         status = validation_status(issues)
         invoice.validation_status = status
         if status == "valid":
@@ -849,243 +844,6 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def load_sample_generator() -> Any:
-    script_path = Path(__file__).resolve().parents[2] / "sample_inputs" / "scripts" / "generation_core.py"
-    if not script_path.exists():
-        raise HTTPException(status_code=404, detail="sample_inputs generator was not found")
-    spec = importlib.util.spec_from_file_location("finrecon_sample_generation_core", script_path)
-    if spec is None or spec.loader is None:
-        raise HTTPException(status_code=500, detail="Could not load sample generator")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def sample_paths(module: Any) -> dict[str, str]:
-    return {
-        "raw_dir": str(module.RAW_DIR),
-        "processed_dir": str(module.PROCESSED_DIR),
-        "vendor_master": str(module.RAW_DIR / "vendor_master.csv"),
-        "invoice_register": str(module.RAW_DIR / "invoice_register.csv"),
-        "payment_batch": str(module.RAW_DIR / "payment_batch.csv"),
-        "bank_statement": str(module.RAW_DIR / "bank_statement.csv"),
-        "einvoice_xml_dir": str(module.EINVOICE_DIR),
-        "pdf_dir": str(module.PDF_DIR),
-        "image_dir": str(module.IMAGE_DIR),
-    }
-
-
-def sample_file_counts(module: Any) -> dict[str, int]:
-    raw_count = len([path for path in module.RAW_DIR.rglob("*") if path.is_file()]) if module.RAW_DIR.exists() else 0
-    processed_count = len([path for path in module.PROCESSED_DIR.rglob("*") if path.is_file()]) if module.PROCESSED_DIR.exists() else 0
-    return {
-        "raw_files": raw_count,
-        "processed_files": processed_count,
-        "einvoice_xml_files": len(list(module.EINVOICE_DIR.glob("*.xml"))) if module.EINVOICE_DIR.exists() else 0,
-        "pdf_files": len(list(module.PDF_DIR.glob("*.pdf"))) if module.PDF_DIR.exists() else 0,
-        "image_files": len(list(module.IMAGE_DIR.glob("*.png"))) if module.IMAGE_DIR.exists() else 0,
-    }
-
-
-def sample_db_counts(db: Session) -> dict[str, int]:
-    files = db.scalars(select(SampleGeneratedFile)).all()
-    categories = Counter(file.file_category for file in files)
-    return {
-        "db_files": len(files),
-        "db_vendor_files": categories.get("vendor_master", 0),
-        "db_invoice_files": categories.get("invoice_register", 0),
-        "db_payment_files": categories.get("payment_batch", 0),
-        "db_bank_files": categories.get("bank_statement", 0),
-        "db_xml_files": categories.get("einvoice_xml", 0),
-        "db_pdf_files": categories.get("invoice_pdf", 0),
-        "db_image_files": categories.get("invoice_image", 0),
-    }
-
-
-def sample_file_category(relative_path: Path) -> str:
-    text = relative_path.as_posix()
-    name = relative_path.name
-    if name.startswith("vendor_master"):
-        return "vendor_master"
-    if name.startswith("invoice_register"):
-        return "invoice_register"
-    if name.startswith("payment_batch"):
-        return "payment_batch"
-    if name.startswith("bank_statement"):
-        return "bank_statement"
-    if name.startswith("expected_reconciliation"):
-        return "expected_results"
-    if "einvoice_xml/" in text:
-        return "einvoice_xml"
-    if "invoice_attachments/pdf/" in text:
-        return "invoice_pdf"
-    if "invoice_attachments/images/" in text:
-        return "invoice_image"
-    if text.startswith("processed/"):
-        return "processed"
-    return "other"
-
-
-def sample_file_public(file: SampleGeneratedFile) -> dict[str, Any]:
-    return {
-        "id": file.id,
-        "file_name": file.file_name,
-        "relative_path": file.relative_path,
-        "file_category": file.file_category,
-        "media_type": file.media_type,
-        "file_size": file.file_size,
-        "generated_at": _serialize(file.generated_at),
-        "download_url": f"/api/sample-data/files/{file.id}/download",
-        "content_url": f"/api/sample-data/files/{file.id}/content",
-    }
-
-
-def ingest_generated_sample_files(db: Session, module: Any) -> int:
-    root = module.SAMPLE_ROOT
-    files = []
-    for folder in (module.RAW_DIR, module.PROCESSED_DIR):
-        if folder.exists():
-            files.extend(path for path in folder.rglob("*") if path.is_file())
-    created = 0
-    for path in sorted(files):
-        relative_path = path.relative_to(root)
-        media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        content = path.read_bytes()
-        db.add(
-            SampleGeneratedFile(
-                file_name=path.name,
-                relative_path=relative_path.as_posix(),
-                file_category=sample_file_category(relative_path),
-                media_type=media_type,
-                file_size=len(content),
-                content=content,
-            )
-        )
-        created += 1
-    db.flush()
-    return created
-
-
-@app.delete("/api/sample-data/generated")
-def clear_generated_sample_data(db: Session = Depends(get_db)) -> dict[str, Any]:
-    module = load_sample_generator()
-    before = sample_file_counts(module)
-    db_before = sample_db_counts(db)
-    deleted = db.query(SampleGeneratedFile).delete()
-    module.ensure_directories(clean=True)
-    after = sample_file_counts(module)
-    db_after = sample_db_counts(db)
-    result = {
-        "cleared": True,
-        "deleted_db_files": deleted,
-        "before": before,
-        "after": after,
-        "db_before": db_before,
-        "db_after": db_after,
-        **after,
-        **db_after,
-        "paths": sample_paths(module),
-    }
-    audit(db, "sample_data_cleared", "sample_inputs", None, result)
-    return result
-
-
-@app.post("/api/sample-data/generate")
-def generate_sample_data(clear_existing: bool = Query(True), db: Session = Depends(get_db)) -> dict[str, Any]:
-    module = load_sample_generator()
-    if clear_existing:
-        db.execute(delete(SampleGeneratedFile))
-    data = module.generate_all_inputs(clean=clear_existing)
-    physical_counts = sample_file_counts(module)
-    stored_files = ingest_generated_sample_files(db, module)
-    module.ensure_directories(clean=True)
-    after_cleanup = sample_file_counts(module)
-    db_counts = sample_db_counts(db)
-    result = {
-        "clear_existing": clear_existing,
-        "vendors": len(data.vendors),
-        "invoices": len(data.invoices),
-        "payments": len(data.payments),
-        "transactions": len(data.transactions),
-        "expected_results": len(data.expected_results),
-        "stored_files": stored_files,
-        "einvoice_xml_files": db_counts["db_xml_files"],
-        "pdf_files": db_counts["db_pdf_files"],
-        "image_files": db_counts["db_image_files"],
-        "raw_files": after_cleanup["raw_files"],
-        "processed_files": after_cleanup["processed_files"],
-        "physical_before_cleanup": physical_counts,
-        **db_counts,
-        "paths": sample_paths(module),
-    }
-    audit(db, "sample_data_generated", "sample_inputs", None, result)
-    return result
-
-
-@app.get("/api/sample-data/files")
-def list_sample_files(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-    files = db.scalars(select(SampleGeneratedFile).order_by(SampleGeneratedFile.file_category, SampleGeneratedFile.relative_path)).all()
-    return [sample_file_public(file) for file in files]
-
-
-@app.get("/api/sample-data/files/download.zip")
-def download_all_sample_files(db: Session = Depends(get_db)) -> StreamingResponse:
-    files = db.scalars(select(SampleGeneratedFile).order_by(SampleGeneratedFile.relative_path)).all()
-    if not files:
-        raise HTTPException(status_code=404, detail="No generated sample files in database")
-    archive = BytesIO()
-    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        for file in files:
-            zip_file.writestr(file.relative_path, file.content)
-    archive.seek(0)
-    headers = {"Content-Disposition": 'attachment; filename="finrecon_sample_inputs.zip"'}
-    return StreamingResponse(archive, media_type="application/zip", headers=headers)
-
-
-@app.get("/api/sample-data/files/{file_id}/download")
-def download_sample_file(file_id: int, db: Session = Depends(get_db)) -> StreamingResponse:
-    file = db.get(SampleGeneratedFile, file_id)
-    if file is None:
-        raise HTTPException(status_code=404, detail="Sample file not found")
-    headers = {"Content-Disposition": f'attachment; filename="{file.file_name}"'}
-    return StreamingResponse(BytesIO(file.content), media_type=file.media_type, headers=headers)
-
-
-@app.get("/api/sample-data/files/{file_id}/content")
-def sample_file_content(file_id: int, db: Session = Depends(get_db)) -> StreamingResponse:
-    file = db.get(SampleGeneratedFile, file_id)
-    if file is None:
-        raise HTTPException(status_code=404, detail="Sample file not found")
-    headers = {"Content-Disposition": f'inline; filename="{file.file_name}"'}
-    return StreamingResponse(BytesIO(file.content), media_type=file.media_type, headers=headers)
-
-
-@app.get("/api/sample-data/files/{file_id}/preview")
-def preview_sample_file(file_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
-    file = db.get(SampleGeneratedFile, file_id)
-    if file is None:
-        raise HTTPException(status_code=404, detail="Sample file not found")
-    suffix = Path(file.file_name).suffix.lower()
-    if suffix not in {".csv", ".txt", ".xml", ".json", ".md"}:
-        return sample_file_public(file)
-    text = decode_bytes(file.content)
-    result = sample_file_public(file)
-    result["text"] = text[:200_000]
-    if suffix == ".csv":
-        import csv
-        import io
-
-        reader = csv.DictReader(io.StringIO(text))
-        rows = []
-        for index, row in enumerate(reader):
-            if index >= 100:
-                break
-            rows.append({str(key): value for key, value in row.items()})
-        result["columns"] = reader.fieldnames or []
-        result["rows"] = rows
-    return result
-
 @app.post("/api/auth/login")
 def login(payload: LoginPayload, db: Session = Depends(get_db)) -> dict[str, Any]:
     user = db.scalar(select(User).where(User.email == payload.email, User.is_active.is_(True)))
@@ -1289,16 +1047,16 @@ async def import_payment_batches(file: UploadFile = File(...), db: Session = Dep
         elif payment_id.lower() in existing_ids:
             row_errors.append("payment_id already exists")
         if invoice is None:
-            row_errors.append("invoice_id must exist")
+            row_errors.append("invoice_id/receipt_id must exist")
         elif row.get("vendor_id") and invoice.vendor_id and row.get("vendor_id") != invoice.vendor_id:
-            row_errors.append("vendor_id must match invoice vendor")
+            row_errors.append("vendor_id must match receipt vendor")
         if approval_status not in VALID_APPROVAL_STATUSES:
             row_errors.append("approval_status is invalid")
         amount = parse_amount(row.get("approved_amount"))
         if invoice and amount is not None and invoice.total_amount and amount != invoice.total_amount and not row.get("notes"):
-            row_errors.append("approved_amount differs from invoice total and notes is empty")
+            row_errors.append("approved_amount differs from receipt total and notes is empty")
         if approval_status == "approved" and invoice and invoice.status not in {"validated", "approved_for_payment", "payment_scheduled", "paid", "reconciled"}:
-            row_errors.append("only validated invoices can be approved")
+            row_errors.append("only validated receipts can be approved")
         if row_errors:
             skipped += 1
             errors.append({"row": str(index), "message": "; ".join(row_errors)})
@@ -1351,7 +1109,7 @@ def generate_payment_batch_from_approved(db: Session = Depends(get_db), user: Us
             approved_by=user.email,
             approved_at=datetime.utcnow(),
             payment_method="bank_transfer",
-            notes="Generated from approved invoice",
+            notes="Generated from approved receipt",
         )
         db.add(payment)
         invoice.status = "payment_scheduled"
@@ -1421,7 +1179,7 @@ async def upload_invoice_batch(files: list[UploadFile] = File(...), db: Session 
             invoice = create_invoice_from_upload(db, file, content, batch)
             created.append(as_dict(invoice))
         except Exception as exc:
-            errors.append({"file": file.filename or "invoice", "message": str(exc)})
+            errors.append({"file": file.filename or "receipt", "message": str(exc)})
     finish_batch(db, batch)
     run_all_validation(db)
     return {"batch_id": batch.id, "created": len(created), "errors": errors, "invoices": created}
@@ -1513,7 +1271,7 @@ async def upload_invoice_attachment(
         audit(db, "invoice_attachment_uploaded", "invoice", invoice.id, {"file": file.filename})
         return as_dict(invoice, {"preview_url": preview_url(invoice.source_file_path), "uploaded_file_id": uploaded.id})
     if not use_fallback_extraction:
-        return {"uploaded_file_id": uploaded.id, "preview_url": preview_url(str(saved_path)), "message": "Attachment uploaded without invoice extraction."}
+        return {"uploaded_file_id": uploaded.id, "preview_url": preview_url(str(saved_path)), "message": "Attachment uploaded without receipt extraction."}
     if (file.filename or "").lower().endswith(".xml"):
         raw_text = decode_bytes(content)
         payload = parse_vietnam_einvoice_xml(content)
@@ -1537,7 +1295,7 @@ def list_invoices(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
 def get_invoice(invoice_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     invoice = db.get(Invoice, invoice_id)
     if invoice is None:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+        raise HTTPException(status_code=404, detail="Receipt not found")
     return as_dict(invoice, {"preview_url": preview_url(invoice.source_file_path)})
 
 
@@ -1545,7 +1303,7 @@ def get_invoice(invoice_id: int, db: Session = Depends(get_db)) -> dict[str, Any
 def update_invoice(invoice_id: int, payload: InvoicePayload, db: Session = Depends(get_db)) -> dict[str, Any]:
     invoice = db.get(Invoice, invoice_id)
     if invoice is None:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+        raise HTTPException(status_code=404, detail="Receipt not found")
     before = as_dict(invoice)
     for key, value in normalize_invoice_payload(payload.model_dump()).items():
         setattr(invoice, key, value)
@@ -1593,7 +1351,7 @@ def clear_all_invoices(db: Session = Depends(get_db)) -> dict[str, Any]:
 def delete_invoice(invoice_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     invoice = db.get(Invoice, invoice_id)
     if invoice is None:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+        raise HTTPException(status_code=404, detail="Receipt not found")
     upload_ids = [value for value in [invoice.uploaded_file_id] if value is not None]
     files = db.scalars(select(UploadedFile).where(UploadedFile.id.in_(upload_ids))).all() if upload_ids else []
     db.execute(delete(ReconciliationMatch).where(ReconciliationMatch.invoice_id == invoice_id))
@@ -1612,7 +1370,7 @@ def delete_invoice(invoice_id: int, db: Session = Depends(get_db)) -> dict[str, 
 def get_invoice_review(invoice_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     invoice = db.get(Invoice, invoice_id)
     if invoice is None:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+        raise HTTPException(status_code=404, detail="Receipt not found")
     return as_dict(invoice, {"preview_url": preview_url(invoice.source_file_path)})
 
 
@@ -1620,7 +1378,7 @@ def get_invoice_review(invoice_id: int, db: Session = Depends(get_db)) -> dict[s
 def review_invoice(invoice_id: int, payload: ReviewInvoicePayload, db: Session = Depends(get_db)) -> dict[str, Any]:
     invoice = db.get(Invoice, invoice_id)
     if invoice is None:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+        raise HTTPException(status_code=404, detail="Receipt not found")
     before = as_dict(invoice)
     for key, value in normalize_invoice_payload(payload.model_dump()).items():
         setattr(invoice, key, value)
@@ -1645,7 +1403,7 @@ def find_invoice(db: Session, invoice_key: str) -> Invoice | None:
 def validate_one_invoice(invoice_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     invoice = find_invoice(db, invoice_id)
     if invoice is None:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+        raise HTTPException(status_code=404, detail="Receipt not found")
     result = run_all_validation(db)
     audit(db, "invoice_validated", "invoice", invoice.id, result)
     return as_dict(invoice, {"validation": result})
@@ -1655,10 +1413,10 @@ def validate_one_invoice(invoice_id: str, db: Session = Depends(get_db)) -> dict
 def approve_invoice(invoice_id: str, db: Session = Depends(get_db), user: User = Depends(require_roles("admin", "accountant", "reviewer"))) -> dict[str, Any]:
     invoice = find_invoice(db, invoice_id)
     if invoice is None:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+        raise HTTPException(status_code=404, detail="Receipt not found")
     run_all_validation(db)
     if invoice.validation_status != "valid" and invoice.status != "validated":
-        raise HTTPException(status_code=400, detail="Chỉ invoice đã validated mới được duyệt thanh toán")
+        raise HTTPException(status_code=400, detail="Chỉ phiếu nhập đã hợp lệ mới được duyệt thanh toán")
     invoice.status = "approved_for_payment"
     audit(db, "invoice_approved_for_payment", "invoice", invoice.id, {"approved_by": user.email})
     return as_dict(invoice)
@@ -1668,7 +1426,7 @@ def approve_invoice(invoice_id: str, db: Session = Depends(get_db), user: User =
 def reject_invoice(invoice_id: str, db: Session = Depends(get_db), user: User = Depends(require_roles("admin", "accountant", "reviewer"))) -> dict[str, Any]:
     invoice = find_invoice(db, invoice_id)
     if invoice is None:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+        raise HTTPException(status_code=404, detail="Receipt not found")
     invoice.status = "rejected"
     audit(db, "invoice_rejected", "invoice", invoice.id, {"rejected_by": user.email})
     return as_dict(invoice)
@@ -1804,7 +1562,7 @@ def run_reconciliation(db: Session = Depends(get_db)) -> dict[str, Any]:
         if p.id not in used_payments:
             i.status = "exception"
             p.approval_status = "exception"
-            db.add(ReconciliationException(invoice_id=i.id, exception_type="unmatched_approved_invoice", severity="medium", message="Approved payment has no matching bank transaction."))
+            db.add(ReconciliationException(invoice_id=i.id, exception_type="unmatched_approved_invoice", severity="medium", message="Approved receipt payment has no matching bank transaction."))
             created_exceptions += 1
 
     for transaction in transactions:
@@ -1824,7 +1582,7 @@ def reconciliation_results(db: Session = Depends(get_db)) -> list[dict[str, Any]
 def reconciliation_candidates(invoice_id: int = Query(...), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     invoice = db.get(Invoice, invoice_id)
     if invoice is None:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+        raise HTTPException(status_code=404, detail="Receipt not found")
     rules = rule_dict(get_rule(db))
     invoice_data = invoice_for_engine(invoice)
     candidates: list[dict[str, Any]] = []
@@ -1866,7 +1624,7 @@ def reject_match(match_id: int, db: Session = Depends(get_db), user: User = Depe
     match.approved = False
     match.match_status = "rejected"
     match.reviewed_by = user.id
-    db.add(ReconciliationException(invoice_id=match.invoice_id, bank_transaction_id=match.bank_transaction_id, exception_type="manual_rejection", severity="medium", message="User rejected this automated match."))
+    db.add(ReconciliationException(invoice_id=match.invoice_id, bank_transaction_id=match.bank_transaction_id, exception_type="manual_rejection", severity="medium", message="User rejected this automated receipt/payment match."))
     audit(db, "match_rejected", "reconciliation_match", match_id)
     return {"rejected": match_id}
 

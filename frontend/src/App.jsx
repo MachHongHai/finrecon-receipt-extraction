@@ -18,12 +18,8 @@ import {
   FileCheck,
   CreditCard,
   AlertCircle,
-  Eye,
   Loader2,
   ChevronRight,
-  Database,
-  Maximize2,
-  Minimize2
 } from "lucide-react";
 
 const API_BASE =
@@ -60,11 +56,11 @@ const statusLabels = {
   matched: "Đã khớp",
   partially_matched: "Cần review",
   amount_mismatch: "Lệch tiền",
-  unmatched_invoice: "Hóa đơn chưa thanh toán",
+  unmatched_invoice: "Phiếu chưa thanh toán",
   unmatched_approved_invoice: "Phiếu chưa trả",
   unmatched_transaction: "Giao dịch chưa khớp",
   unmatched_bank_transaction: "CK chưa khớp",
-  duplicate_invoice: "Trùng hóa đơn",
+  duplicate_invoice: "Trùng phiếu nhập",
   low_ocr_confidence: "Độ tin cậy thấp",
   low_confidence_fallback_extraction: "Trích xuất yếu",
   amount_mismatch_exception: "Lệch số tiền",
@@ -74,93 +70,62 @@ const statusLabels = {
 
 const steps = [
   {
-    id: "sample-data",
-    number: 1,
-    label: "Dữ liệu mẫu",
-    short: "Sample",
-    icon: FileText,
-  },
-  {
     id: "rules",
-    number: 2,
+    number: 1,
     label: "Cấu hình quy tắc",
     short: "Quy tắc",
     icon: Settings2,
   },
   {
     id: "vendors",
-    number: 3,
+    number: 2,
     label: "Danh mục mối buôn",
     short: "Mối buôn",
     icon: FileSpreadsheet,
   },
   {
     id: "invoice-source",
-    number: 4,
+    number: 3,
     label: "Phiếu nhập hàng",
     short: "Nhập hàng",
     icon: Upload,
   },
   {
     id: "prepayment",
-    number: 5,
+    number: 4,
     label: "Kiểm tra phiếu nhập",
     short: "Kiểm tra",
     icon: ClipboardCheck,
   },
   {
     id: "payment",
-    number: 6,
+    number: 5,
     label: "Bảng kê thanh toán",
     short: "Bảng kê",
     icon: Banknote,
   },
   {
     id: "bank",
-    number: 7,
+    number: 6,
     label: "Sao kê ngân hàng",
     short: "Sao kê",
     icon: FileSpreadsheet,
   },
   {
     id: "reconcile",
-    number: 8,
+    number: 7,
     label: "Đối soát thanh toán",
     short: "Đối soát",
     icon: AlertTriangle,
   },
   {
     id: "dashboard",
-    number: 9,
+    number: 8,
     label: "Bảng điều khiển",
     short: "Báo cáo",
     icon: WandSparkles,
   },
 ];
-
-const sampleCategoryGroups = [
-  { id: "all", label: "Tất cả", categories: [] },
-  { id: "master", label: "Vendor master", categories: ["vendor_master"] },
-  { id: "invoice-data", label: "Bảng kê phiếu", categories: ["invoice_register", "processed"] },
-  { id: "ocr-files", label: "Ảnh/PDF OCR", categories: ["invoice_image", "invoice_pdf"] },
-  { id: "xml", label: "XML HĐĐT", categories: ["einvoice_xml"] },
-  { id: "payment", label: "Thanh toán", categories: ["payment_batch"] },
-  { id: "bank", label: "Sao kê bank", categories: ["bank_statement"] },
-  { id: "expected", label: "Kết quả mẫu", categories: ["expected_results"] },
-];
-
-const sampleCategoryLabels = {
-  vendor_master: "Vendor master",
-  invoice_register: "Bảng kê phiếu",
-  invoice_image: "Ảnh OCR",
-  invoice_pdf: "PDF OCR",
-  einvoice_xml: "XML HĐĐT",
-  payment_batch: "Bảng kê thanh toán",
-  bank_statement: "Sao kê ngân hàng",
-  expected_results: "Kết quả mẫu",
-  processed: "Dữ liệu xử lý",
-  other: "Khác",
-};
 
 function formatMoney(value, currency = "VND") {
   if (value === null || value === undefined || value === "") return "-";
@@ -515,7 +480,7 @@ function QuickEditModal({ invoice, isOpen, onClose, onSave, busy }) {
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center border border-dashed border-slate-200 dark:border-zinc-850 rounded-xl p-8 bg-slate-50/50 dark:bg-zinc-950/20">
                 <span className="text-xs text-slate-400 dark:text-zinc-500 font-medium">Không phát hiện hàng hóa chi tiết</span>
-                <span className="text-[10px] text-slate-400/80 dark:text-zinc-600 mt-1">Hóa đơn không định dạng bảng hoặc ảnh mờ</span>
+                <span className="text-[10px] text-slate-400/80 dark:text-zinc-600 mt-1">Phiếu nhập không định dạng bảng hoặc ảnh mờ</span>
               </div>
             )}
           </div>
@@ -544,60 +509,8 @@ function QuickEditModal({ invoice, isOpen, onClose, onSave, busy }) {
   );
 }
 
-function SamplePreviewModal({ preview, isOpen, onClose, renderContent }) {
-  const [isFullscreen, setIsFullscreen] = useState(false);
-
-  useEffect(() => {
-    if (!isOpen) {
-      setIsFullscreen(false);
-    }
-  }, [isOpen]);
-
-  if (!isOpen || !preview) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm fade-in">
-      <div className={`bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-xl flex flex-col transition-all duration-300 slide-up ${
-        isFullscreen ? "w-[95vw] h-[90vh] max-w-7xl" : "w-full max-w-3xl h-[65vh]"
-      }`}>
-        <div className="flex justify-between items-center p-4 border-b border-slate-100 dark:border-zinc-800/80">
-          <h3 className="text-xs font-bold text-slate-800 dark:text-zinc-100 truncate pr-4">
-            Xem nhanh: {preview.file_name}
-          </h3>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-500 dark:text-zinc-400 rounded-lg transition-colors"
-              title={isFullscreen ? "Thu nhỏ" : "Phóng to"}
-            >
-              {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 rounded-lg transition-colors font-bold text-xs"
-              title="Đóng"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-auto p-4 bg-slate-50/50 dark:bg-zinc-950/20">
-          {renderContent(isFullscreen)}
-        </div>
-        <div className="p-3 border-t border-slate-100 dark:border-zinc-800/80 flex justify-end">
-          <button type="button" onClick={onClose} className="btn-secondary py-1.5 px-4 text-xs">
-            Đóng
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function App() {
-  const [activeStep, setActiveStep] = useState("sample-data");
+  const [activeStep, setActiveStep] = useState("rules");
   const [overview, setOverview] = useState({});
   const [vendors, setVendors] = useState([]);
   const [invoices, setInvoices] = useState([]);
@@ -611,12 +524,6 @@ export default function App() {
   const [auditLogs, setAuditLogs] = useState([]);
   const [reports, setReports] = useState([]);
   const [reportText, setReportText] = useState("");
-  const [sampleSummary, setSampleSummary] = useState(null);
-  const [sampleFiles, setSampleFiles] = useState([]);
-  const [samplePreview, setSamplePreview] = useState(null);
-  const [clearGeneratedBeforeRun, setClearGeneratedBeforeRun] = useState(true);
-  const [sampleCategoryFilter, setSampleCategoryFilter] = useState("all");
-  const [sampleFormatFilter, setSampleFormatFilter] = useState("all");
   const [exceptionDrafts, setExceptionDrafts] = useState({});
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -677,34 +584,6 @@ export default function App() {
     return list;
   }, [invoices]);
 
-  const sampleFormats = useMemo(() => {
-    const formats = new Set();
-    sampleFiles.forEach((file) => {
-      const suffix = file.file_name?.split(".").pop()?.toLowerCase();
-      if (suffix) formats.add(suffix);
-    });
-    return Array.from(formats).sort();
-  }, [sampleFiles]);
-
-  const sampleCategoryCounts = useMemo(() => {
-    const counts = { all: sampleFiles.length };
-    sampleCategoryGroups.forEach((group) => {
-      if (group.id === "all") return;
-      counts[group.id] = sampleFiles.filter((file) => group.categories.includes(file.file_category)).length;
-    });
-    return counts;
-  }, [sampleFiles]);
-
-  const filteredSampleFiles = useMemo(() => {
-    const activeGroup = sampleCategoryGroups.find((group) => group.id === sampleCategoryFilter);
-    return sampleFiles.filter((file) => {
-      const categoryMatch = !activeGroup || activeGroup.id === "all" || activeGroup.categories.includes(file.file_category);
-      const suffix = file.file_name?.split(".").pop()?.toLowerCase();
-      const formatMatch = sampleFormatFilter === "all" || suffix === sampleFormatFilter;
-      return categoryMatch && formatMatch;
-    });
-  }, [sampleFiles, sampleCategoryFilter, sampleFormatFilter]);
-
   useEffect(() => {
     if (theme === "dark") {
       document.documentElement.classList.add("dark");
@@ -762,21 +641,10 @@ export default function App() {
     }
   }
 
-  async function loadSampleFiles() {
-    try {
-      const list = await request("/api/sample-data/files");
-      setSampleFiles(list);
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
   useEffect(() => {
     loadData();
-    loadSampleFiles();
     const timer = setInterval(() => {
       loadData();
-      loadSampleFiles();
     }, 60000);
     return () => clearInterval(timer);
   }, []);
@@ -787,7 +655,6 @@ export default function App() {
     try {
       const res = await action();
       await loadData();
-      await loadSampleFiles();
       if (successMessage) {
         setNotice(successMessage);
         setTimeout(() => setNotice(""), 4000);
@@ -859,18 +726,18 @@ export default function App() {
 
   async function approveInvoice(invoice) {
     const key = invoice.invoice_id || invoice.id;
-    await withBusy(() => request(`/api/invoices/${key}/approve`, { method: "POST" }), "Đã duyệt hóa đơn");
+    await withBusy(() => request(`/api/invoices/${key}/approve`, { method: "POST" }), "Đã duyệt phiếu nhập");
   }
 
   async function rejectInvoice(invoice) {
     const key = invoice.invoice_id || invoice.id;
-    await withBusy(() => request(`/api/invoices/${key}/reject`, { method: "POST" }), "Đã từ chối hóa đơn");
+    await withBusy(() => request(`/api/invoices/${key}/reject`, { method: "POST" }), "Đã từ chối phiếu nhập");
   }
 
   async function generatePaymentBatch() {
     await withBusy(
       () => request("/api/payment-batches/generate-from-approved-invoices", { method: "POST" }),
-      "Đã sinh payment batch từ hóa đơn đã duyệt",
+      "Đã sinh bảng kê từ phiếu nhập đã duyệt",
     );
   }
 
@@ -921,14 +788,6 @@ export default function App() {
     if (result?.report) setReportText(result.report);
   }
 
-  async function clearGeneratedSamples() {
-    const result = await withBusy(
-      () => request("/api/sample-data/generated", { method: "DELETE" }),
-      "Đã xóa các file sample đã generate",
-    );
-    if (result) setSampleSummary({ cleared: true, ...result });
-  }
-
   async function clearData(endpoint, label) {
     if (window.confirm(`Bạn có chắc chắn muốn xóa toàn bộ dữ liệu ${label} không?`)) {
       await withBusy(
@@ -938,58 +797,8 @@ export default function App() {
     }
   }
 
-  async function generateSamples() {
-    const result = await withBusy(
-      () => request(`/api/sample-data/generate?clear_existing=${clearGeneratedBeforeRun}`, { method: "POST" }),
-      "Đã generate bộ dữ liệu mẫu",
-    );
-    if (result) setSampleSummary(result);
-  }
-
-  async function openSamplePreview(file) {
-    const preview = await withBusy(
-      () => request(`/api/sample-data/files/${file.id}/preview`),
-      `Đang xem ${file.file_name}`,
-    );
-    if (preview) setSamplePreview(preview);
-  }
-
   function quickEditInvoice(invoice) {
     setEditingInvoice(invoice);
-  }
-
-  function renderSamplePreview(isFullscreen = false) {
-    if (!samplePreview) return null;
-    const suffix = samplePreview.file_name.split(".").pop()?.toLowerCase();
-    const previewUrl = `${API_BASE}${samplePreview.content_url || samplePreview.download_url}`;
-    if (["png", "jpg", "jpeg", "gif", "webp"].includes(suffix)) {
-      return (
-        <div className="p-2.5 bg-slate-50 dark:bg-zinc-900/60 rounded-xl border border-slate-100 dark:border-zinc-800 flex justify-center">
-          <img className="max-w-full h-auto rounded-lg shadow-xs border border-slate-200/50 dark:border-zinc-700/50" src={previewUrl} alt={samplePreview.file_name} />
-        </div>
-      );
-    }
-    if (suffix === "pdf") {
-      return <iframe className={`w-full ${isFullscreen ? "h-[72vh]" : "h-[45vh]"} rounded-xl border border-slate-200 dark:border-zinc-850`} src={previewUrl} title={samplePreview.file_name} />;
-    }
-    if (suffix === "csv" && samplePreview.rows?.length) {
-      const columns = samplePreview.columns || Object.keys(samplePreview.rows[0] || {});
-      return (
-        <div className="table-wrap border border-slate-100 dark:border-zinc-800/80 rounded-xl overflow-hidden shadow-xs">
-          <table className="modern-table">
-            <thead>
-              <tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr>
-            </thead>
-            <tbody>
-              {samplePreview.rows.map((row, index) => (
-                <tr key={index}>{columns.map((column) => <td key={column}>{row[column] || ""}</td>)}</tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    }
-    return <pre className={`p-3 bg-slate-50 dark:bg-zinc-900/60 border border-slate-100 dark:border-zinc-800 text-[11px] font-mono rounded-xl overflow-auto text-slate-700 dark:text-zinc-300 ${isFullscreen ? "max-h-[72vh]" : "max-h-[320px]"}`}>{samplePreview.text || "Không có preview."}</pre>;
   }
 
   function nextStep() {
@@ -1013,8 +822,8 @@ export default function App() {
               <Banknote size={18} className="animate-pulse" />
             </div>
             <div>
-              <strong className="text-sm font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">FinRecon AI</strong>
-              <span className="block text-[9px] text-slate-550 dark:text-zinc-400 font-bold tracking-wider uppercase">Automated Audits</span>
+              <strong className="text-sm font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">FinRecon Receipt AI</strong>
+              <span className="block text-[9px] text-slate-550 dark:text-zinc-400 font-bold tracking-wider uppercase">F&B Receipt Control</span>
             </div>
           </div>
           <button
@@ -1065,16 +874,14 @@ export default function App() {
             <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" />
             <span className="text-[10px] font-semibold text-slate-300">Hoạt động bình thường</span>
           </div>
-          {activeStep !== "sample-data" && (
-            <button
-              onClick={() => refresh()}
-              disabled={busy}
-              className="w-full btn-secondary py-1.5 text-[11px] flex items-center justify-center gap-1 shadow-sm"
-            >
-              {busy ? <Loader2 className="animate-spin" size={11} /> : <RefreshCw size={11} />}
-              Làm mới dữ liệu
-            </button>
-          )}
+          <button
+            onClick={() => refresh()}
+            disabled={busy}
+            className="w-full btn-secondary py-1.5 text-[11px] flex items-center justify-center gap-1 shadow-sm"
+          >
+            {busy ? <Loader2 className="animate-spin" size={11} /> : <RefreshCw size={11} />}
+            Làm mới dữ liệu
+          </button>
         </div>
       </aside>
 
@@ -1117,117 +924,7 @@ export default function App() {
             </div>
           )}
 
-          {/* STEP 1: SAMPLE DATA WORKFLOW */}
-          {activeStep === "sample-data" && (
-            <div className="space-y-5 slide-up">
-              <div className="premium-card p-5 space-y-4">
-                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 pb-3 border-b border-slate-100 dark:border-zinc-800/80">
-                  <div>
-                    <h2 className="text-sm font-bold text-slate-800 dark:text-zinc-100">Kho dữ liệu mẫu F&B</h2>
-                  </div>
-                  <div className="flex flex-wrap gap-2 shrink-0">
-                    <button onClick={generateSamples} disabled={busy} className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1 shadow-sm">
-                      {busy ? <Loader2 className="animate-spin" size={12} /> : <Database size={12} />}
-                      Tạo sample
-                    </button>
-                    <button onClick={clearGeneratedSamples} disabled={busy} className="btn-secondary py-1.5 px-3 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                      <Trash2 size={12} />
-                      Xóa sample
-                    </button>
-                    {sampleFiles.length > 0 && (
-                      <a className="btn-secondary py-1.5 px-3 text-xs" href={`${API_BASE}/api/sample-data/files/download.zip`}>Tải ZIP</a>
-                    )}
-                  </div>
-                </div>
-
-                <label className="flex items-center gap-2 p-2 bg-slate-50 dark:bg-zinc-900/40 border border-slate-100 dark:border-zinc-800 rounded-lg cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    className="rounded border-slate-200 dark:border-zinc-700 text-emerald-600 focus:ring-emerald-500/20 w-3.5 h-3.5"
-                    checked={clearGeneratedBeforeRun}
-                    onChange={(event) => setClearGeneratedBeforeRun(event.target.checked)}
-                  />
-                  <span className="text-[11px] text-slate-600 dark:text-zinc-300 font-semibold">Tự động xóa sạch dữ liệu mẫu cũ trước khi sinh mới</span>
-                </label>
-
-                <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
-                  <Metric icon={FileSpreadsheet} label="Mối buôn" value={sampleSummary?.vendors ?? "-"} />
-                  <Metric icon={FileText} label="Phiếu nhập" value={sampleSummary?.invoices ?? "-"} />
-                  <Metric icon={FileText} label="XML HĐĐT" value={(sampleSummary?.einvoice_xml_files ?? sampleFiles.filter((file) => file.file_category === "einvoice_xml").length) || "-"} />
-                  <Metric icon={Upload} label="Ảnh & PDF" value={((sampleSummary?.image_files ?? sampleFiles.filter((file) => file.file_category === "invoice_image").length) + (sampleSummary?.pdf_files ?? sampleFiles.filter((file) => file.file_category === "invoice_pdf").length)) || "-"} />
-                  <Metric icon={ClipboardCheck} label="Bảng kê" value={sampleSummary?.payments ?? "-"} />
-                  <Metric icon={Banknote} label="Sao kê" value={sampleSummary?.transactions ?? "-"} />
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex flex-col gap-2">
-                    <div className="flex flex-wrap gap-1.5">
-                      {sampleCategoryGroups.map((group) => {
-                        const activeGroup = sampleCategoryFilter === group.id;
-                        return (
-                          <button
-                            key={group.id}
-                            type="button"
-                            onClick={() => setSampleCategoryFilter(group.id)}
-                            className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold transition-colors ${
-                              activeGroup
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800/50"
-                                : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50 dark:bg-zinc-900 dark:text-zinc-400 dark:border-zinc-800 dark:hover:bg-zinc-850"
-                            }`}
-                          >
-                            {group.label} <span className="font-mono opacity-70">{sampleCategoryCounts[group.id] || 0}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold uppercase text-slate-400 dark:text-zinc-500">Format</span>
-                      <select
-                        className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-600 dark:text-zinc-300"
-                        value={sampleFormatFilter}
-                        onChange={(event) => setSampleFormatFilter(event.target.value)}
-                      >
-                        <option value="all">Tất cả format</option>
-                        {sampleFormats.map((format) => (
-                          <option key={format} value={format}>{format.toUpperCase()}</option>
-                        ))}
-                      </select>
-                      <span className="text-[10px] text-slate-400 dark:text-zinc-500">
-                        Đang hiển thị {filteredSampleFiles.length}/{sampleFiles.length} file
-                      </span>
-                    </div>
-                  </div>
-
-                  <DataTable
-                    rows={filteredSampleFiles}
-                    pageSize={8}
-                    empty="Không có file phù hợp với bộ lọc"
-                    columns={[
-                      { key: "file_name", label: "Tên file" },
-                      { key: "file_category", label: "Nhóm", render: (row) => sampleCategoryLabels[row.file_category] || row.file_category },
-                      { key: "media_type", label: "Format", render: (row) => row.file_name?.split(".").pop()?.toUpperCase() || row.media_type || "-" },
-                      { key: "file_size", label: "Dung lượng", render: (row) => `${Math.ceil((row.file_size || 0) / 1024)} KB` },
-                      {
-                        key: "actions",
-                        label: "Thao tác",
-                        render: (row) => (
-                          <div className="flex gap-1.5">
-                            <button onClick={() => openSamplePreview(row)} className="btn-secondary px-2 py-1 text-[10px] rounded-md flex items-center gap-1">
-                              <Eye size={10} />
-                              Xem
-                            </button>
-                            <a className="btn-secondary px-2 py-1 text-[10px] rounded-md" href={`${API_BASE}${row.download_url}`}>Tải</a>
-                          </div>
-                        ),
-                      },
-                    ]}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 2: RULES CONFIGURATION */}
+          {/* STEP 1: RULES CONFIGURATION */}
           {activeStep === "rules" && (
             <div className="space-y-5 slide-up">
               <form className="premium-card p-5 space-y-5" onSubmit={saveRules}>
@@ -1254,7 +951,7 @@ export default function App() {
             </div>
           )}
 
-          {/* STEP 3: VENDORS MASTER */}
+          {/* STEP 2: VENDORS MASTER */}
           {activeStep === "vendors" && (
             <div className="space-y-5 slide-up">
               <div className="premium-card p-5 space-y-4">
@@ -1301,15 +998,15 @@ export default function App() {
             </div>
           )}
 
-          {/* STEP 4: INVOICE UPLOAD & OCR */}
+          {/* STEP 3: RECEIPT UPLOAD & OCR */}
           {activeStep === "invoice-source" && (
             <div className="premium-card p-5 space-y-4 slide-up">
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 pb-3 border-b border-slate-100 dark:border-zinc-800/80">
                 <div>
-                  <h2 className="text-sm font-bold text-slate-800 dark:text-zinc-100">Tải lên phiếu nhập hàng / hóa đơn ({invoices.length})</h2>
+                  <h2 className="text-sm font-bold text-slate-800 dark:text-zinc-100">Tải lên phiếu nhập hàng ({invoices.length})</h2>
                 </div>
                 {invoices.length > 0 && (
-                  <button onClick={() => clearData("/api/invoices", "hóa đơn")} disabled={busy} className="btn-secondary py-1 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                  <button onClick={() => clearData("/api/invoices", "phiếu nhập")} disabled={busy} className="btn-secondary py-1 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1">
                     <Trash2 size={12} />
                     Xóa tất cả
                   </button>
@@ -1338,10 +1035,10 @@ export default function App() {
                 <UploadCard
                   icon={FileSpreadsheet}
                   title="Bảng kê điện tử Excel/CSV"
-                  helper="Nhập trực tiếp danh sách hóa đơn từ tệp bảng kê."
+                  helper="Nhập trực tiếp danh sách phiếu nhập từ tệp bảng kê."
                   inputRef={invoiceRegisterRef}
                   accept=".csv,.xlsx,.xls"
-                  onSubmit={() => importFile(invoiceRegisterRef.current?.files?.[0], "/api/invoices/import-register", "invoice register")}
+                  onSubmit={() => importFile(invoiceRegisterRef.current?.files?.[0], "/api/invoices/import-register", "bảng kê phiếu nhập")}
                   busy={busy}
                 />
               </div>
@@ -1349,7 +1046,7 @@ export default function App() {
               <DataTable
                 rows={flattenedInvoices}
                 pageSize={20}
-                empty="Chưa có hóa đơn nào được tải lên"
+                empty="Chưa có phiếu nhập nào được tải lên"
                 columns={[
                   {
                     key: "invoice_number",
@@ -1418,7 +1115,7 @@ export default function App() {
             </div>
           )}
 
-          {/* STEP 5: PRE-PAYMENT VALIDATION */}
+          {/* STEP 4: PRE-PAYMENT VALIDATION */}
           {activeStep === "prepayment" && (
             <div className="premium-card p-5 space-y-4 slide-up">
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 pb-3 border-b border-slate-100 dark:border-zinc-800/80">
@@ -1467,7 +1164,7 @@ export default function App() {
             </div>
           )}
 
-          {/* STEP 6: PAYMENT BATCH */}
+          {/* STEP 5: PAYMENT BATCH */}
           {activeStep === "payment" && (
             <div className="premium-card p-5 space-y-4 slide-up">
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 pb-3 border-b border-slate-100 dark:border-zinc-800/80">
@@ -1520,7 +1217,7 @@ export default function App() {
             </div>
           )}
 
-          {/* STEP 7: BANK STATEMENT */}
+          {/* STEP 6: BANK STATEMENT */}
           {activeStep === "bank" && (
             <div className="premium-card p-5 space-y-4 slide-up">
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 pb-3 border-b border-slate-100 dark:border-zinc-800/80">
@@ -1569,7 +1266,7 @@ export default function App() {
             </div>
           )}
 
-          {/* STEP 8: RECONCILIATION */}
+          {/* STEP 7: RECONCILIATION */}
           {activeStep === "reconcile" && (
             <div className="premium-card p-5 space-y-4 slide-up">
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 pb-3 border-b border-slate-100 dark:border-zinc-800/80">
@@ -1633,7 +1330,7 @@ export default function App() {
                     { key: "exception_type", label: "Loại lỗi", render: (row) => <StatusPill value={row.exception_type} /> },
                     { key: "severity", label: "Mức độ", render: (row) => <StatusPill value={row.severity} /> },
                     { key: "status", label: "Trạng thái", render: (row) => <StatusPill value={row.status} /> },
-                    { key: "invoice_number", label: "Hóa đơn" },
+                    { key: "invoice_number", label: "Phiếu nhập" },
                     { key: "transaction_id", label: "Giao dịch" },
                     { key: "message", label: "Nội dung lỗi" },
                     {
@@ -1667,7 +1364,7 @@ export default function App() {
             </div>
           )}
 
-          {/* STEP 9: DASHBOARD & REPORTING */}
+          {/* STEP 8: DASHBOARD & REPORTING */}
           {activeStep === "dashboard" && (
             <div className="space-y-5 slide-up">
               <div className="premium-card p-5 space-y-4">
@@ -1686,7 +1383,7 @@ export default function App() {
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <Metric icon={FileText} label="Tổng hóa đơn" value={overview.total_invoices || 0} />
+                  <Metric icon={FileText} label="Tổng phiếu nhập" value={overview.total_invoices || 0} />
                   <Metric icon={CheckCircle2} label="Tỷ lệ khớp tiền" value={`${overview.match_rate || overview.matched_rate || 0}%`} tone="good" />
                   <Metric icon={AlertTriangle} label="Ngoại lệ mở" value={overview.open_exceptions || 0} tone="warn" />
                   <Metric icon={Banknote} label="Tổng nợ hàng" value={formatMoney(overview.total_invoice_value || 0)} />
@@ -1834,14 +1531,6 @@ export default function App() {
           await refresh();
         }}
         busy={busy}
-      />
-
-      {/* SAMPLE PREVIEW MODAL */}
-      <SamplePreviewModal
-        preview={samplePreview}
-        isOpen={!!samplePreview}
-        onClose={() => setSamplePreview(null)}
-        renderContent={(isFullscreen) => renderSamplePreview(isFullscreen)}
       />
 
     </main>

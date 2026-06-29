@@ -55,7 +55,7 @@ def validate_invoice(
             {
                 "type": "missing_required_field",
                 "severity": "medium",
-                "message": "Invoice number is missing.",
+                "message": "Receipt number is missing.",
             }
         )
 
@@ -65,7 +65,7 @@ def validate_invoice(
             {
                 "type": "missing_required_field",
                 "severity": "medium",
-                "message": "Invoice date is missing or invalid.",
+                "message": "Receipt date is missing or invalid.",
             }
         )
     elif invoice_date > date.today().isoformat():
@@ -73,7 +73,7 @@ def validate_invoice(
             {
                 "type": "date_mismatch",
                 "severity": "medium",
-                "message": "Invoice date is in the future.",
+                "message": "Receipt date is in the future.",
             }
         )
 
@@ -95,7 +95,7 @@ def validate_invoice(
             {
                 "type": "amount_mismatch",
                 "severity": "high",
-                "message": "VAT amount cannot be negative.",
+                "message": "Tax amount cannot be negative.",
             }
         )
 
@@ -106,7 +106,7 @@ def validate_invoice(
                 {
                     "type": "amount_mismatch",
                     "severity": "high",
-                    "message": f"Subtotal plus VAT differs from total by {diff:,.0f}.",
+                    "message": f"Subtotal plus tax differs from total by {diff:,.0f}.",
                 }
             )
 
@@ -124,7 +124,7 @@ def validate_invoice(
             {
                 "type": "duplicate_invoice",
                 "severity": "critical",
-                "message": "Invoice number appears more than once.",
+                "message": "Receipt number appears more than once.",
             }
         )
 

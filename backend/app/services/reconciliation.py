@@ -109,5 +109,5 @@ def match_reason(invoice: dict[str, Any], transaction: dict[str, Any], metrics: 
         parts.append(f"date diff {metrics['date_diff']} days")
     reference_text = f"{transaction.get('description') or ''} {transaction.get('reference_code') or ''}"
     if invoice.get("invoice_number") and normalize_text(invoice["invoice_number"]) in normalize_text(reference_text):
-        parts.append("invoice number found in bank description")
+        parts.append("receipt/reference found in bank description")
     return ", ".join(parts)

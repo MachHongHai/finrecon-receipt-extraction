@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -84,19 +84,6 @@ class UploadedFile(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
     batch: Mapped[InvoiceBatch | None] = relationship(back_populates="uploaded_files")
-
-
-class SampleGeneratedFile(Base):
-    __tablename__ = "sample_generated_files"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    file_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    relative_path: Mapped[str] = mapped_column(Text, nullable=False)
-    file_category: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    media_type: Mapped[str] = mapped_column(String(128), nullable=False, default="application/octet-stream")
-    file_size: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    generated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
 class ProcessingJob(Base):
