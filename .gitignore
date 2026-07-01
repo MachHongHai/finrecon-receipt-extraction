@@ -12,6 +12,34 @@ frontend/dist/
 
 external/PaddleOCR/
 
+# Local datasets, generated training exports, checkpoints, and models.
+# Keep only lightweight docs/manifests in Git.
+archive/source_mcocr/
+archive/prepared/
+archive/models/
+archive/**/*.pdparams
+archive/**/*.pdopt
+archive/**/*.states
+archive/**/*.onnx
+archive/**/*.inference
+archive/**/*.tar
+archive/**/*.zip
+archive/**/*.7z
+archive/**/*.jpg
+archive/**/*.jpeg
+archive/**/*.png
+archive/**/*.pdf
+archive/**/*.xlsx
+archive/**/*.csv
+archive/**/*.tsv
+archive/**/*.jsonl
+archive/**/train.json
+archive/**/val.json
+archive/**/test.json
+!archive/README.md
+!archive/**/README.md
+!archive/**/*.md
+
 .env
 .DS_Store
 Thumbs.db
