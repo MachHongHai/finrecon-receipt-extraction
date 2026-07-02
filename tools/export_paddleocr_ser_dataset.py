@@ -161,17 +161,19 @@ def write_config(
     learning_rate: float,
     warmup_epoch: int,
     clip_norm_global: float,
+    print_batch_step: int = 10,
 ) -> None:
     config_path = output_dir / "ser_vi_layoutxlm_finrecon_4field.yml"
     save_dir = output_dir / "output" / "ser_vi_layoutxlm_finrecon_4field"
     pretrained_dir = output_dir / "pretrained"
     labels_count = len(LABELS)
     paddle_num_classes = labels_count * 2 - 1
+    learning_rate_text = f"{learning_rate:.10f}".rstrip("0").rstrip(".")
     config = f"""Global:
   use_gpu: true
   epoch_num: &epoch_num {epoch_num}
   log_smooth_window: 10
-  print_batch_step: 10
+  print_batch_step: {print_batch_step}
   save_model_dir: {yaml_path(save_dir)}
   save_epoch_step: {epoch_num}
   eval_batch_step: [0, {eval_step}]
@@ -214,7 +216,7 @@ Optimizer:
   clip_norm_global: {clip_norm_global}
   lr:
     name: Linear
-    learning_rate: {learning_rate}
+    learning_rate: {learning_rate_text}
     epochs: *epoch_num
     warmup_epoch: {warmup_epoch}
   regularizer:
@@ -392,6 +394,7 @@ def export(args: argparse.Namespace) -> None:
         learning_rate=args.learning_rate,
         warmup_epoch=args.warmup_epoch,
         clip_norm_global=args.clip_norm_global,
+        print_batch_step=10,
     )
     write_training_readme(output_dir, stats)
     print(f"Wrote PaddleOCR SER dataset to {output_dir}")
@@ -418,7 +421,7 @@ def main() -> None:
         help="How to populate PaddleOCR images directory.",
     )
     parser.add_argument("--clear", action="store_true", help="Clear output directory before export.")
-    parser.add_argument("--epoch-num", type=int, default=6, help="Epoch count for generated train config.")
+    parser.add_argument("--epoch-num", type=int, default=10, help="Epoch count for generated train config.")
     parser.add_argument("--eval-step", type=int, default=250, help="Evaluation step interval for generated train config.")
     parser.add_argument("--batch-size", type=int, default=2, help="Batch size per GPU card for generated train config.")
     parser.add_argument(

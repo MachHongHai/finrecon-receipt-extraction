@@ -288,6 +288,9 @@ function UploadCard({ icon: Icon, title, helper, inputRef, accept, multiple, onS
   const [localFiles, setLocalFiles] = useState(null);
   const filesToPreview = selectedFiles !== undefined ? selectedFiles : localFiles;
   const [previews, setPreviews] = useState([]);
+  const isModelOnlyImageUpload = accept === ".png,.jpg,.jpeg,.bmp,.webp";
+  const displayTitle = isModelOnlyImageUpload ? "Ảnh phiếu nhập - model-only" : title;
+  const displayHelper = isModelOnlyImageUpload ? "Chỉ dùng PaddleOCR/LayoutXLM đã train, không fallback parser." : helper;
 
   useEffect(() => {
     if (filesToPreview && filesToPreview.length > 0) {
@@ -318,8 +321,8 @@ function UploadCard({ icon: Icon, title, helper, inputRef, accept, multiple, onS
         <Icon size={20} />
       </div>
       <div>
-        <h4 className="font-bold text-slate-800 dark:text-zinc-100 text-xs">{title}</h4>
-        <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 max-w-[200px] leading-relaxed">{helper}</p>
+        <h4 className="font-bold text-slate-800 dark:text-zinc-100 text-xs">{displayTitle}</h4>
+        <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5 max-w-[200px] leading-relaxed">{displayHelper}</p>
       </div>
 
       {previews.length > 0 && (
@@ -449,6 +452,28 @@ function QuickEditModal({ invoice, isOpen, onClose, onSave, busy }) {
             <h4 className="text-[10px] font-extrabold text-slate-400 dark:text-zinc-500 uppercase tracking-widest pb-1 border-b border-slate-100 dark:border-zinc-850">
               Chi tiết mặt hàng ({invoice.items?.length || 0})
             </h4>
+
+            {invoice.preview_url && (
+              <div className="border border-slate-100 dark:border-zinc-800 rounded-xl overflow-hidden bg-slate-50 dark:bg-zinc-950/60 max-h-[260px] flex items-center justify-center">
+                <img
+                  src={`${API_BASE}${invoice.preview_url}`}
+                  alt={invoice.source_file_name || "Phiếu nhập"}
+                  className="max-h-[260px] w-full object-contain"
+                />
+              </div>
+            )}
+
+            {invoice.source_type === "paddleocr_ser_model_only" && (
+              <div className="border border-emerald-100 dark:border-emerald-900/30 rounded-xl overflow-hidden bg-emerald-50/40 dark:bg-emerald-950/10">
+                <div className="px-3 py-2 flex items-center justify-between border-b border-emerald-100 dark:border-emerald-900/30">
+                  <span className="text-[10px] font-extrabold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest">PaddleOCR/LayoutXLM model-only</span>
+                  <StatusPill value={invoice.status} />
+                </div>
+                <pre className="p-3 text-[10px] leading-relaxed whitespace-pre-wrap max-h-[180px] overflow-auto text-slate-700 dark:text-zinc-300 font-mono">
+                  {invoice.raw_text || "Model chưa trả về token có nhãn."}
+                </pre>
+              </div>
+            )}
 
             {invoice.items && invoice.items.length > 0 ? (
               <div className="border border-slate-100 dark:border-zinc-800 rounded-xl overflow-hidden shadow-xs flex-1 min-h-[200px] overflow-y-auto">
@@ -1019,7 +1044,7 @@ export default function App() {
                   title="Ảnh chụp phiếu viết tay & PDF (OCR)"
                   helper="Hệ thống quét OCR tự động để đọc số tiền, mã phiếu."
                   inputRef={fallbackFilesRef}
-                  accept=".pdf,.png,.jpg,.jpeg,.txt,.xml"
+                  accept=".png,.jpg,.jpeg,.bmp,.webp"
                   multiple
                   selectedFiles={fallbackFiles}
                   onSelectFiles={(files) => setFallbackFiles(files)}

@@ -13,7 +13,7 @@ $Python = Join-Path $RepoRoot ".venvs\paddleocr-gpu\Scripts\python.exe"
 $EvalScript = Join-Path $RepoRoot "external\PaddleOCR\tools\eval.py"
 $Config = Join-Path $RepoRoot $ConfigPath
 $DatasetDir = Split-Path -Parent $Config
-$Checkpoint = Join-Path $DatasetDir "output\ser_vi_layoutxlm_finrecon_4field\best_accuracy\model_state.pdparams"
+$Checkpoint = Join-Path $DatasetDir "output\ser_vi_layoutxlm_finrecon_4field\best_accuracy"
 $LabelFile = Join-Path $DatasetDir "$Split.json"
 
 if (-not (Test-Path -LiteralPath $Python)) {
@@ -35,6 +35,6 @@ if (-not (Test-Path -LiteralPath $LabelFile)) {
 $gpuValue = if ($UseGpu) { "True" } else { "False" }
 & $Python $EvalScript -c $Config -o `
     Global.use_gpu=$gpuValue `
-    Global.checkpoints="$Checkpoint" `
+    Architecture.Backbone.checkpoints="$Checkpoint" `
     Eval.dataset.label_file_list="[${LabelFile}]"
 exit $LASTEXITCODE

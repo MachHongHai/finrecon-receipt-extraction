@@ -10,6 +10,8 @@ $env:XDG_CACHE_HOME = $ProjectCache
 $env:PIP_CACHE_DIR = Join-Path $ProjectCache "pip"
 $env:TEMP = Join-Path $ProjectCache "tmp"
 $env:TMP = Join-Path $ProjectCache "tmp"
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
 
 foreach ($path in @(
     $env:PPNLP_HOME,

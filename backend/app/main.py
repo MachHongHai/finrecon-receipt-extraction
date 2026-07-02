@@ -38,6 +38,7 @@ from app.models import (
 from app.schemas import ExceptionUpdatePayload, InvoicePayload, LoginPayload, ResolvePayload, ReviewInvoicePayload, RulePayload
 from app.seed import verify_password
 from app.services.reconciliation import calculate_match_score, classify_match, is_reconciliation_candidate, match_reason
+from app.services.kie_model import KieModelError, extract_receipt_fields_model_only, is_model_supported_file
 from app.services.reporting import build_reconciliation_report
 from app.services.validation import validate_bank_transaction, validate_invoice, validation_status
 from app.utils import (
@@ -461,7 +462,7 @@ def create_invoice_record(
             db.flush()
         except Exception as e:
             print(f"Error saving fallback invoice items: {e}")
-    elif raw_text:
+    elif raw_text and payload.get("source_type") != "paddleocr_ser_model_only":
         try:
             items_data = dedupe_invoice_items(extract_invoice_items(raw_text), invoice_total=invoice.total_amount)
             for item_data in items_data:
@@ -715,9 +716,18 @@ def create_invoice_from_upload(db: Session, file: UploadFile, content: bytes, ba
         raw_text = decode_bytes(content)
         extracted = parse_vietnam_einvoice_xml(content)
     else:
-        raw_text = read_extractable_text(file.filename or "", content)
-        extracted = extract_invoice_fields(raw_text, file.filename or "")
-    payload = {**extracted, **{key: value for key, value in (form_payload or {}).items() if value not in {None, ""}}}
+        try:
+            if not is_model_supported_file(file.filename):
+                raise KieModelError(
+                    "Model-only OCR chỉ hỗ trợ ảnh .jpg, .jpeg, .png, .bmp, .webp. Không dùng fallback parser."
+                )
+            extracted = extract_receipt_fields_model_only(saved_path)
+        except KieModelError as exc:
+            update_job(job, "failed", str(exc))
+            status_code = 400 if "chỉ hỗ trợ ảnh" in str(exc) else 500
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        raw_text = extracted.get("raw_text") or ""
+    payload = extracted if not is_xml else {**extracted, **{key: value for key, value in (form_payload or {}).items() if value not in {None, ""}}}
     try:
         invoice = create_invoice_record(
             db,
@@ -729,6 +739,8 @@ def create_invoice_from_upload(db: Session, file: UploadFile, content: bytes, ba
             processing_job_id=job.id,
             batch_id=batch.id if batch else None,
         )
+        if payload.get("source_type") == "paddleocr_ser_model_only":
+            invoice.status = "needs_review"
         update_job(job, "completed")
         return invoice
     except Exception as exc:
@@ -1236,9 +1248,16 @@ async def upload_invoice_attachment(
                 raw_text = decode_bytes(content)
                 payload = parse_vietnam_einvoice_xml(content)
             else:
-                raw_text = read_extractable_text(file.filename or "", content)
-                payload = extract_invoice_fields(raw_text, file.filename or "")
-                payload["source_type"] = "ocr"
+                try:
+                    if not is_model_supported_file(file.filename):
+                        raise KieModelError(
+                            "Model-only OCR chỉ hỗ trợ ảnh .jpg, .jpeg, .png, .bmp, .webp. Không dùng fallback parser."
+                        )
+                    payload = extract_receipt_fields_model_only(saved_path)
+                except KieModelError as exc:
+                    status_code = 400 if "chỉ hỗ trợ ảnh" in str(exc) else 500
+                    raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+                raw_text = payload.get("raw_text") or ""
             payload["attachment_file"] = file.filename
             before = as_dict(invoice)
             for key, value in normalize_invoice_payload(payload).items():
@@ -1249,7 +1268,9 @@ async def upload_invoice_attachment(
             invoice.updated_at = datetime.utcnow()
             db.execute(delete(InvoiceItem).where(InvoiceItem.invoice_id == invoice.id))
             payload_items = payload.get("line_items")
-            items_data = payload_items if isinstance(payload_items, list) and payload_items else extract_invoice_items(raw_text)
+            items_data = payload_items if isinstance(payload_items, list) and payload_items else []
+            if payload.get("source_type") != "paddleocr_ser_model_only":
+                items_data = items_data or extract_invoice_items(raw_text)
             items_data = dedupe_invoice_items(items_data, invoice_total=invoice.total_amount)
             for item_data in items_data:
                 description = item_data.get("description") or item_data.get("name")
@@ -1276,9 +1297,16 @@ async def upload_invoice_attachment(
         raw_text = decode_bytes(content)
         payload = parse_vietnam_einvoice_xml(content)
     else:
-        raw_text = read_extractable_text(file.filename or "", content)
-        payload = extract_invoice_fields(raw_text, file.filename or "")
-        payload["source_type"] = "ocr"
+        try:
+            if not is_model_supported_file(file.filename):
+                raise KieModelError(
+                    "Model-only OCR chỉ hỗ trợ ảnh .jpg, .jpeg, .png, .bmp, .webp. Không dùng fallback parser."
+                )
+            payload = extract_receipt_fields_model_only(saved_path)
+        except KieModelError as exc:
+            status_code = 400 if "chỉ hỗ trợ ảnh" in str(exc) else 500
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        raw_text = payload.get("raw_text") or ""
     payload["attachment_file"] = file.filename
     invoice = create_invoice_record(db, payload, raw_text=raw_text, source_path=str(saved_path), source_name=file.filename, uploaded_file_id=uploaded.id)
     invoice.status = "needs_review"
