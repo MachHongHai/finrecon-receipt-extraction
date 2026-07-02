@@ -89,6 +89,9 @@ def validate_split(dataset_dir: Path, split_name: str, labels: set[str]) -> tupl
 
 
 def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(description="Validate a PaddleOCR SER dataset before training.")
     parser.add_argument("--dataset-dir", default="archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser")
     parser.add_argument("--strict-mojibake", action="store_true")

@@ -6,9 +6,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-. (Join-Path $PSScriptRoot "paddleocr_env.ps1")
+. (Join-Path $PSScriptRoot "env.ps1")
 
-$RepoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")
+$RepoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..\..")
 $Python = Join-Path $RepoRoot ".venvs\paddleocr-gpu\Scripts\python.exe"
 $EvalScript = Join-Path $RepoRoot "external\PaddleOCR\tools\eval.py"
 $Config = Join-Path $RepoRoot $ConfigPath
@@ -33,8 +33,12 @@ if (-not (Test-Path -LiteralPath $LabelFile)) {
 }
 
 $gpuValue = if ($UseGpu) { "True" } else { "False" }
+$PreviousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 & $Python $EvalScript -c $Config -o `
     Global.use_gpu=$gpuValue `
     Architecture.Backbone.checkpoints="$Checkpoint" `
     Eval.dataset.label_file_list="[${LabelFile}]"
-exit $LASTEXITCODE
+$EvalExitCode = $LASTEXITCODE
+$ErrorActionPreference = $PreviousErrorActionPreference
+exit $EvalExitCode

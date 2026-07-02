@@ -1,58 +1,99 @@
 # Archive Local Data Layout
 
-`archive/` la khu vuc du lieu local cho OCR/KIE training. Thu muc nay khong nen day len GitHub, ngoai file README nhe nay.
+`archive/` is the local data area for OCR/KIE datasets, training exports, reports, and checkpoints. Most of it is intentionally ignored by Git.
 
-## Khong commit
+## Do Not Commit Heavy Data
 
-`.gitignore` da bo qua cac thu muc/file nang sau:
+`.gitignore` excludes:
 
-- `archive/source_mcocr/`: dataset MC-OCR goc.
-- `archive/prepared/`: dataset da prepare/export, co the sinh lai.
-- `archive/models/`: model/checkpoint/export artifact neu co.
-- Anh, PDF, CSV/TSV/XLSX, JSONL, `train.json`, `val.json`, `test.json`, checkpoint Paddle.
+- `archive/source_mcocr/`
+- `archive/prepared/`
+- `archive/models/`
+- image/PDF/spreadsheet files
+- `train.json`, `val.json`, `test.json`
+- Paddle checkpoint/model files
+- JSONL training metrics
 
-Neu can chia se dataset/model, dung mot trong cac cach sau thay vi Git thuong:
+Keep only lightweight documentation in Git.
 
-- Hugging Face Dataset/Model Hub.
-- Google Drive/OneDrive link.
-- GitHub Release artifact.
-- Git LFS chi khi that su can version file nặng trong repo.
-
-## Cau truc local de xuat
+## Current Local Layout
 
 ```text
 archive/
   README.md
-  source_mcocr/                         # raw dataset, read-only, ignored
+  source_mcocr/                         # raw MC-OCR dataset, read-only, ignored
   prepared/
     finrecon_receipt_4field/            # generated prepared dataset, ignored
     finrecon_receipt_4field_clean/      # generated clean dataset, ignored
-      paddleocr_ser/                    # PaddleOCR SER export, ignored
-  models/
-    paddleocr_ser_4field/               # trained checkpoints/inference exports, ignored
+      paddleocr_ser/                    # PaddleOCR LayoutXLM/SER export, ignored
+        images/
+        train.json
+        val.json
+        test.json
+        class_list.txt
+        ser_vi_layoutxlm_finrecon_4field.yml
+        output/
+          ser_vi_layoutxlm_finrecon_4field/
+            best_accuracy/              # current best checkpoint
+        reports/
+          gpu_10epoch_tracked.*         # current kept train/eval logs
+  models/                               # optional future exported models, ignored
 ```
 
-## Cach tai tao dataset train
+## Active Dataset
 
-Dat dataset goc vao:
+The active KIE/SER dataset is:
+
+```text
+archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser
+```
+
+Labels:
+
+```text
+OTHER
+SELLER
+ADDRESS
+TIMESTAMP
+TOTAL_COST
+```
+
+The current best checkpoint is:
+
+```text
+archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/output/ser_vi_layoutxlm_finrecon_4field/best_accuracy
+```
+
+## Recreate Training Data
+
+Put the raw MC-OCR source under:
 
 ```text
 archive/source_mcocr/
 ```
 
-Sau do chay:
+Then run:
 
 ```powershell
-python tools\prepare_receipt_4field_dataset.py --clear --copy-mode hardlink
-python tools\clean_receipt_4field_dataset.py --clear --copy-mode hardlink
-python tools\export_paddleocr_ser_dataset.py --dataset-dir archive\prepared\finrecon_receipt_4field_clean --output-dir archive\prepared\finrecon_receipt_4field_clean\paddleocr_ser --copy-mode hardlink --epoch-num 6 --eval-step 250 --batch-size 2 --learning-rate 0.00002 --warmup-epoch 1 --clip-norm-global 1.0
-python tools\validate_paddleocr_ser_dataset.py --dataset-dir archive\prepared\finrecon_receipt_4field_clean\paddleocr_ser
+python scripts\datasets\prepare_receipt_4field_dataset.py --clear --copy-mode hardlink
+python scripts\datasets\clean_receipt_4field_dataset.py --clear --copy-mode hardlink
+python scripts\datasets\export_paddleocr_ser_dataset.py --dataset-dir archive\prepared\finrecon_receipt_4field_clean --output-dir archive\prepared\finrecon_receipt_4field_clean\paddleocr_ser --copy-mode hardlink --epoch-num 10 --eval-step 250 --batch-size 2 --learning-rate 0.00002 --warmup-epoch 1 --clip-norm-global 1.0
+python scripts\datasets\validate_paddleocr_ser_dataset.py --dataset-dir archive\prepared\finrecon_receipt_4field_clean\paddleocr_ser
 ```
 
-## Train/eval
+## Train/Eval
 
 ```powershell
-.\tools\paddleocr_gpu_check.ps1
-.\tools\paddleocr_train_gpu.ps1
-.\tools\paddleocr_eval_ser.ps1 -Split test -UseGpu
+.\scripts\training\paddleocr\gpu_check.ps1
+.\scripts\training\paddleocr\train_gpu.ps1
+.\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
 ```
+
+## Sharing Dataset Or Model
+
+Do not push large dataset/model artifacts through normal Git. Use one of:
+
+- Hugging Face Dataset/Model Hub
+- Google Drive/OneDrive
+- GitHub Releases
+- Git LFS only if versioning large files is truly needed

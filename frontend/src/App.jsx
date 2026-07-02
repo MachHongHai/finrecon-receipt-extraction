@@ -89,7 +89,7 @@ function App() {
 
   const fields = FIELD_ORDER.map((label) => {
     const found = result?.fields?.find((field) => field.label === label);
-    return { label, value: found?.value || "" };
+    return { label, value: found?.display_value || found?.value || "", rawValue: found?.raw_value || "" };
   });
 
   return (

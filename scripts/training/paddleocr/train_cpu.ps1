@@ -3,9 +3,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-. (Join-Path $PSScriptRoot "paddleocr_env.ps1")
+. (Join-Path $PSScriptRoot "env.ps1")
 
-$RepoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")
+$RepoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..\..")
 $Python = Join-Path $RepoRoot ".venvs\paddleocr\Scripts\python.exe"
 $TrainScript = Join-Path $RepoRoot "external\PaddleOCR\tools\train.py"
 $Config = Join-Path $RepoRoot $ConfigPath

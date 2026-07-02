@@ -1,19 +1,28 @@
 # PaddleOCR Environment
 
-Moi truong PaddleOCR duoc tach rieng khoi backend/frontend.
+The PaddleOCR/LayoutXLM environment is separate from the backend and frontend environments.
 
-## Duong dan
+## Paths
 
-- Python env: `.venvs/paddleocr`
-- Python GPU env: `.venvs/paddleocr-gpu`
-- PaddleOCR source: `external/PaddleOCR`
-- Project cache: `.cache/`
-- PaddleOCR SER dataset khuyen nghi: `archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser`
-- Train config khuyen nghi: `archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/ser_vi_layoutxlm_finrecon_4field.yml`
+```text
+Python CPU env:      .venvs/paddleocr
+Python GPU env:      .venvs/paddleocr-gpu
+PaddleOCR source:    external/PaddleOCR
+Project cache:       .cache/
+SER dataset:         archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser
+SER train config:    archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/ser_vi_layoutxlm_finrecon_4field.yml
+Best checkpoint:     archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/output/ser_vi_layoutxlm_finrecon_4field/best_accuracy
+```
 
-## Cache va dung luong
+## Cache Policy
 
-Tat ca script PaddleOCR trong `tools/` deu nap `tools/paddleocr_env.ps1` truoc khi chay. File nay ep cache ve o D trong project:
+All project scripts load:
+
+```powershell
+scripts\training\paddleocr\env.ps1
+```
+
+This keeps Paddle/PaddleNLP/HuggingFace/pip/temp cache inside the project on drive D:
 
 ```text
 .cache/paddlenlp
@@ -23,7 +32,7 @@ Tat ca script PaddleOCR trong `tools/` deu nap `tools/paddleocr_env.ps1` truoc k
 .cache/tmp
 ```
 
-Bien moi truong duoc set trong script:
+Environment variables set by the script:
 
 ```text
 PPNLP_HOME=.cache/paddlenlp
@@ -33,56 +42,31 @@ XDG_CACHE_HOME=.cache
 PIP_CACHE_DIR=.cache/pip
 TEMP=.cache/tmp
 TMP=.cache/tmp
+PYTHONUTF8=1
+PYTHONIOENCODING=utf-8
 ```
 
-Model pretrained `vi-layoutxlm-base-uncased` da duoc chuyen tu `C:\Users\ADMIN\.paddlenlp` sang `.cache/paddlenlp`.
+Do not run PaddleOCR commands manually without these variables unless you intentionally want cache outside the project.
 
-Ngoai ra, cac bien User environment sau da duoc set de neu chay lenh Paddle/PaddleNLP thu cong thi cache van ve D:
+## GPU Environment
+
+Checked environment:
 
 ```text
-PPNLP_HOME=D:\Du-an\Invoice Automation & Reconciliation System\.cache\paddlenlp
-PADDLE_HOME=D:\Du-an\Invoice Automation & Reconciliation System\.cache\paddle
-HF_HOME=D:\Du-an\Invoice Automation & Reconciliation System\.cache\huggingface
+Python: 3.10.20
+PaddlePaddle GPU: 3.2.2, CUDA 12.6 wheel
+PaddleNLP: 2.6.1.post
+OpenCV: 4.6.0
+NumPy: 1.26.4
 ```
 
-Neu dang mo terminal cu, hay mo terminal moi de nhan User environment moi. Cac script trong `tools/` thi tu set env nen khong can mo terminal moi.
-
-## Phien ban da kiem tra - CPU env
-
-- Python: 3.10.20
-- PaddlePaddle: 2.6.2 CPU
-- PaddleNLP: 2.6.1
-- OpenCV: 4.6.0
-- NumPy: 1.26.4
-
-Kiem tra nhanh:
+Check GPU before training:
 
 ```powershell
-.\.venvs\paddleocr\Scripts\python.exe -c "import paddle, cv2, paddlenlp, numpy; print(paddle.__version__, paddle.device.is_compiled_with_cuda()); print(cv2.__version__, paddlenlp.__version__, numpy.__version__)"
+.\scripts\training\paddleocr\gpu_check.ps1
 ```
 
-Ket qua hien tai la Paddle CPU:
-
-```text
-paddle 2.6.2 cuda False
-```
-
-## Phien ban da kiem tra - GPU env
-
-- Python: 3.10.20
-- PaddlePaddle GPU: 3.2.2, CUDA 12.6 wheel
-- PaddleNLP: 2.6.1
-- OpenCV: 4.6.0
-- NumPy: 1.26.4
-- GPU env cai dung PaddlePaddle GPU wheel, nhung can kiem tra lai tai thoi diem train bang `.\tools\paddleocr_gpu_check.ps1`.
-
-Kiem tra nhanh:
-
-```powershell
-.\tools\paddleocr_gpu_check.ps1
-```
-
-Ket qua mong doi khi GPU dang active:
+Expected good output:
 
 ```text
 paddle 3.2.2 cuda True gpu_count 1
@@ -90,68 +74,108 @@ device gpu:0
 PaddlePaddle works well on 1 GPU.
 ```
 
-Neu output la `gpu_count 0` va `device cpu`, chua train GPU duoc. Lan kiem tra gan nhat sau khi active GPU da bao `gpu_count 1`, `device gpu:0`, va `PaddlePaddle works well on 1 GPU`. Truoc khi train that, van nen chay lai `.\tools\paddleocr_gpu_check.ps1`, cam sac laptop va dam bao Windows dang cho phep dung NVIDIA GPU.
+Also plug in the laptop charger before long training runs.
 
-## Chay train CPU de test pipeline
+## Current LayoutXLM/SER Result
 
-CPU rat cham, chi nen dung de test pipeline/config.
+The best kept model is the 10 epoch GPU run:
 
-```powershell
-.\tools\paddleocr_train_cpu.ps1
+```text
+archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/output/ser_vi_layoutxlm_finrecon_4field/best_accuracy
 ```
 
-Hoac chay truc tiep:
+Metrics:
 
-```powershell
-.\.venvs\paddleocr\Scripts\python.exe .\external\PaddleOCR\tools\train.py `
-  -c ".\archive\prepared\finrecon_receipt_4field\paddleocr_ser\ser_vi_layoutxlm_finrecon_4field.yml" `
-  -o Global.use_gpu=False
+```text
+Validation F1/hmean: 0.9510869565
+Test F1/hmean:       0.9111257406
 ```
 
-## Chay train GPU
+Kept logs:
 
-May co NVIDIA RTX 4060 Laptop GPU. Env GPU rieng da duoc tao tai `.venvs/paddleocr-gpu`.
-
-Test GPU:
-
-```powershell
-.\tools\paddleocr_gpu_check.ps1
+```text
+archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/reports/gpu_10epoch_tracked.*
 ```
 
-Train GPU quick tren dataset clean. Script se validate PaddleOCR SER dataset truoc khi train:
+Later continuation attempts were removed because they did not improve validation F1.
+
+## Train LayoutXLM/SER
+
+Validate GPU:
 
 ```powershell
-.\tools\paddleocr_train_gpu.ps1
+.\scripts\training\paddleocr\gpu_check.ps1
 ```
 
-Tao lai dataset clean va PaddleOCR SER export:
+Run the current training config:
 
 ```powershell
-python tools\clean_receipt_4field_dataset.py --copy-mode hardlink
-python tools\export_paddleocr_ser_dataset.py --dataset-dir archive\prepared\finrecon_receipt_4field_clean --output-dir archive\prepared\finrecon_receipt_4field_clean\paddleocr_ser --copy-mode hardlink --epoch-num 6 --eval-step 250 --batch-size 2 --learning-rate 0.00002 --warmup-epoch 1 --clip-norm-global 1.0
-python tools\validate_paddleocr_ser_dataset.py --dataset-dir archive\prepared\finrecon_receipt_4field_clean\paddleocr_ser
+.\scripts\training\paddleocr\train_gpu.ps1
 ```
 
-Danh gia best checkpoint tren test split sau khi train:
+The script validates the PaddleOCR SER dataset first, then writes logs and tracked metrics to:
+
+```text
+archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/reports/
+```
+
+Evaluate current best checkpoint:
 
 ```powershell
-.\tools\paddleocr_eval_ser.ps1 -Split test
+.\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
 ```
 
-Ghi chu: `boxes_and_transcripts` cua MC-OCR co nhieu transcript rong, ke ca box target field. Pipeline prepare hien dung `mcocr_train_df.csv` lam nguon text chinh thuc cho `SELLER`, `ADDRESS`, `TIMESTAMP`, `TOTAL_COST`: box target rong se duoc recover bang CSV neu bbox overlap tot, annotation CSV con thieu se duoc append vao `boxes`, va box `OTHER` rong bi bo qua. Rule clean khong demote `TOTAL_COST` vi thieu so tien va khong demote `TIMESTAMP` vi thieu ngay/gio.
+## Recreate Prepared Dataset
 
-## Tao lai moi truong
+Raw MC-OCR data should stay read-only under:
+
+```text
+archive/source_mcocr/
+```
+
+Recreate prepared/clean/exported data:
 
 ```powershell
-uv python install 3.10
-uv venv .\.venvs\paddleocr --python 3.10
-uv pip install --python .\.venvs\paddleocr\Scripts\python.exe pip setuptools wheel
-uv pip install --python .\.venvs\paddleocr\Scripts\python.exe paddlepaddle==2.6.2
-uv pip install --python .\.venvs\paddleocr\Scripts\python.exe -r .\external\PaddleOCR\requirements.txt
-uv pip install --python .\.venvs\paddleocr\Scripts\python.exe numpy==1.26.4 paddlenlp==2.6.1
+python scripts\datasets\prepare_receipt_4field_dataset.py --clear --copy-mode hardlink
+python scripts\datasets\clean_receipt_4field_dataset.py --clear --copy-mode hardlink
+python scripts\datasets\export_paddleocr_ser_dataset.py --dataset-dir archive\prepared\finrecon_receipt_4field_clean --output-dir archive\prepared\finrecon_receipt_4field_clean\paddleocr_ser --copy-mode hardlink --epoch-num 10 --eval-step 250 --batch-size 2 --learning-rate 0.00002 --warmup-epoch 1 --clip-norm-global 1.0
+python scripts\datasets\validate_paddleocr_ser_dataset.py --dataset-dir archive\prepared\finrecon_receipt_4field_clean\paddleocr_ser
 ```
 
-## Tao lai moi truong GPU
+## Dataset Notes
+
+Current labels:
+
+```text
+OTHER
+SELLER
+ADDRESS
+TIMESTAMP
+TOTAL_COST
+```
+
+Clean policy:
+
+- Keep keyword/context annotations for `TOTAL_COST` and `TIMESTAMP`.
+- Do not demote `TOTAL_COST` just because a line has no amount.
+- Do not demote `TIMESTAMP` just because a line has no date/time.
+- Skip only truly invalid annotations such as empty text or bad geometry.
+
+## CPU Environment
+
+The CPU env exists mainly for lightweight checks. It is too slow for real LayoutXLM training.
+
+Checked CPU env:
+
+```text
+Python: 3.10.20
+PaddlePaddle: 2.6.2 CPU
+PaddleNLP: 2.6.1
+OpenCV: 4.6.0
+NumPy: 1.26.4
+```
+
+## Recreate GPU Environment
 
 ```powershell
 uv python install 3.10
@@ -162,4 +186,4 @@ uv pip install --python .\.venvs\paddleocr-gpu\Scripts\python.exe -r .\external\
 uv pip install --python .\.venvs\paddleocr-gpu\Scripts\python.exe numpy==1.26.4
 ```
 
-Ghi chu: `paddlenlp==2.8.1` khong dung duoc tren Windows trong lan kiem tra nay vi dependency `tool-helpers` khong co wheel `win_amd64`.
+Note: `paddlenlp==2.8.1` was not usable on Windows in this environment because one dependency had no `win_amd64` wheel.

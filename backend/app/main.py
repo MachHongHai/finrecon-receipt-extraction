@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import re
 import uuid
 from pathlib import Path
 from typing import Any
@@ -44,12 +45,65 @@ def _preview_url(path: Path) -> str:
 
 def _field_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     model_fields = payload.get("model_fields") or {}
+    raw_fields = {
+        "SELLER": model_fields.get("SELLER"),
+        "ADDRESS": model_fields.get("ADDRESS"),
+        "TIMESTAMP": model_fields.get("TIMESTAMP"),
+        "TOTAL_COST": model_fields.get("TOTAL_COST"),
+    }
     return [
-        {"label": "SELLER", "value": model_fields.get("SELLER")},
-        {"label": "ADDRESS", "value": model_fields.get("ADDRESS")},
-        {"label": "TIMESTAMP", "value": model_fields.get("TIMESTAMP")},
-        {"label": "TOTAL_COST", "value": model_fields.get("TOTAL_COST")},
+        _field_row("SELLER", raw_fields["SELLER"]),
+        _field_row("ADDRESS", raw_fields["ADDRESS"]),
+        _field_row("TIMESTAMP", raw_fields["TIMESTAMP"]),
+        _field_row("TOTAL_COST", raw_fields["TOTAL_COST"]),
     ]
+
+
+def _field_row(label: str, raw_value: str | None) -> dict[str, Any]:
+    display_value = _display_value(label, raw_value)
+    return {
+        "label": label,
+        "raw_value": raw_value,
+        "display_value": display_value,
+        "value": display_value,
+    }
+
+
+def _display_value(label: str, raw_value: str | None) -> str | None:
+    if not raw_value:
+        return None
+    text = re.sub(r"\s+", " ", str(raw_value)).strip()
+    if label == "TIMESTAMP":
+        return _extract_date_display(text) or text
+    if label == "TOTAL_COST":
+        return _extract_amount_display(text) or text
+    return text
+
+
+def _extract_date_display(text: str) -> str | None:
+    patterns = [
+        r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b",
+        r"\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(0)
+    return None
+
+
+def _extract_amount_display(text: str) -> str | None:
+    candidates = []
+    for match in re.finditer(r"(?<!\d)(\d[\d\s.,]{2,})(?!\d)", text):
+        raw = match.group(1).strip()
+        normalized = re.sub(r"\s+", "", raw)
+        digits = re.sub(r"\D", "", normalized)
+        if len(digits) < 3:
+            continue
+        candidates.append((len(digits), normalized))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
 
 
 @app.get("/api/health")

@@ -4,15 +4,15 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-. (Join-Path $PSScriptRoot "paddleocr_env.ps1")
+. (Join-Path $PSScriptRoot "env.ps1")
 
-$RepoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")
+$RepoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..\..")
 $Python = Join-Path $RepoRoot ".venvs\paddleocr-gpu\Scripts\python.exe"
 $TrainScript = Join-Path $RepoRoot "external\PaddleOCR\tools\train.py"
 $Config = Join-Path $RepoRoot $ConfigPath
 $DatasetDir = Split-Path -Parent $Config
-$Validator = Join-Path $RepoRoot "tools\validate_paddleocr_ser_dataset.py"
-$Tracker = Join-Path $RepoRoot "tools\track_paddleocr_metrics.py"
+$Validator = Join-Path $RepoRoot "scripts\datasets\validate_paddleocr_ser_dataset.py"
+$Tracker = Join-Path $RepoRoot "scripts\training\paddleocr\track_metrics.py"
 $ValidationReport = Join-Path $DatasetDir "reports\paddleocr_ser_validation.json"
 $ReportsDir = Join-Path $DatasetDir "reports"
 $ResolvedRunName = if ($RunName) { $RunName } else { "train_" + (Get-Date -Format "yyyyMMdd_HHmmss") }

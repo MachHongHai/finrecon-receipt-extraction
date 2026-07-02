@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$RepoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")
+$RepoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..\..")
 $ProjectCache = Join-Path $RepoRoot ".cache"
 
 $env:PPNLP_HOME = Join-Path $ProjectCache "paddlenlp"

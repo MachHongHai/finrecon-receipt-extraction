@@ -1,86 +1,223 @@
 # FinRecon Receipt AI - Codex Handoff Context
 
-Last updated: 2026-06-29
+Last updated: 2026-07-02
 
-## Định hướng hiện tại
+## Current Direction
 
-FinRecon Receipt AI đang được đổi hướng từ nền tảng hóa đơn doanh nghiệp rộng sang tool quy mô nhỏ cho F&B/SME:
+The project has been narrowed from a broad invoice automation and bank reconciliation platform into a focused receipt field extraction tool.
+
+Current goal:
 
 ```text
-Công cụ đọc phiếu nhập hàng, kiểm soát công nợ vendor, duyệt chi và đối soát thanh toán ngân hàng.
+Upload a Vietnamese retail receipt image and test whether the trained model can identify four fields:
+SELLER, ADDRESS, TIMESTAMP, TOTAL_COST.
 ```
 
-Cốt lõi AI sắp train là PaddleOCR/LayoutXLM field extractor cho 4 field trước:
+The active app must be honest about model behavior:
 
-- `seller`
-- `address`
-- `timestamp`
-- `total_cost`
+- Use the trained PaddleOCR/LayoutXLM pipeline only.
+- Do not fallback to regex-generated data or synthetic metadata.
+- Keep raw labels and token table visible for debugging.
+- The four summary cards may post-process display values, but raw model output must remain visible.
 
-Mục tiêu thực tế: người dùng chụp phiếu nhập, biên nhận, phiếu giao hàng hoặc hóa đơn bán hàng đơn giản; hệ thống OCR/extract 4 field chính, cho người dùng review, chuyển thành khoản công nợ phải trả, duyệt chi, rồi đối soát với sao kê ngân hàng.
+## Active Product Scope
 
-## Quyết định kiến trúc
+Current UI:
 
-- Public product wording dùng “phiếu nhập”, “receipt”, “công nợ”, “vendor payable”.
-- Backend vẫn giữ schema/API cũ như `Invoice`, `invoice_number`, `/api/invoices/*` để tránh migration lớn và giữ app chạy ổn.
-- XML hóa đơn điện tử Việt Nam không phải luồng chính, nhưng giữ như nguồn structured phụ cho vendor chính thức.
-- Synthetic generator dữ liệu mẫu cũ đã bị gỡ khỏi dự án.
-- Dữ liệu OCR/train hiện nằm trong `archive/source_mcocr` và `archive/prepared/`.
-- Không ghi cache/checkpoint PaddleOCR sang ổ C; dùng workspace trên ổ D và các script trong `tools/`.
+- Single receipt scanning page.
+- Upload one image.
+- Preview uploaded image.
+- Run model.
+- Show four field cards:
+  - `SELLER`
+  - `ADDRESS`
+  - `TIMESTAMP`
+  - `TOTAL_COST`
+- Show raw model labels and OCR/token table.
 
-## Workflow UI
+Current backend:
 
-Frontend hiện theo luồng 8 bước:
+- `GET /api/health`
+- `POST /api/scan-image`
+- `DELETE /api/scan-results`
 
-1. Cấu hình quy tắc
-2. Danh mục vendor/mối buôn
-3. Phiếu nhập hàng
-4. Kiểm tra phiếu nhập
-5. Bảng kê thanh toán
-6. Sao kê ngân hàng
-7. Đối soát thanh toán
-8. Dashboard
+Removed or inactive for now:
 
-Mục “Dữ liệu mẫu” cũ đã bị loại khỏi navigation.
+- Vendor master import.
+- Invoice/bank reconciliation workflow.
+- Payment approval workflow.
+- Dashboard/reporting workflow.
+- PostgreSQL/Alembic models.
+- XML invoice import.
+- Sample input generator.
+- Batch/job screens.
 
-## Backend hiện có
+## Key Source Files
 
-Các endpoint chính vẫn đang dùng tên `invoices`:
+Backend:
 
-- `POST /api/batches/invoices/upload`
-- `POST /api/invoices/upload`
-- `POST /api/invoices/import-register`
-- `POST /api/invoices/import-xml`
-- `POST /api/invoices/upload-attachment`
-- `GET /api/invoices`
-- `PUT /api/invoices/{invoice_id}`
-- `POST /api/invoices/{invoice_id}/approve`
-- `POST /api/payment-batches/generate-from-approved-invoices`
-- `POST /api/bank-transactions/import`
-- `POST /api/reconciliation/run`
-- `GET /api/dashboard/management-summary`
+```text
+backend/app/main.py
+backend/app/services/kie_model.py
+backend/app/database.py
+backend/requirements.txt
+```
 
-Không rename API nội bộ sang `/api/receipts` nếu chưa có migration/compat layer rõ ràng.
+Frontend:
 
-## OCR và dataset
+```text
+frontend/src/App.jsx
+frontend/package.json
+```
 
-Hướng train:
+Training/tools:
 
-- Dataset gốc: `archive/source_mcocr`
-- Dataset prepared 4 field: `archive/prepared/finrecon_receipt_4field`
-- Dataset clean khuyến nghị cho KIE: `archive/prepared/finrecon_receipt_4field_clean`
-- PaddleOCR SER clean export: `archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser`
-- Class list: `OTHER`, `SELLER`, `ADDRESS`, `TIMESTAMP`, `TOTAL_COST`
+```text
+scripts/training/paddleocr/env.ps1
+scripts/training/paddleocr/gpu_check.ps1
+scripts/training/paddleocr/train_gpu.ps1
+scripts/training/paddleocr/eval_ser.ps1
+scripts/training/paddleocr/track_metrics.py
+scripts/datasets/prepare_receipt_4field_dataset.py
+scripts/datasets/clean_receipt_4field_dataset.py
+scripts/datasets/export_paddleocr_ser_dataset.py
+scripts/datasets/validate_paddleocr_ser_dataset.py
+```
 
-Config train GPU mặc định hiện trỏ vào dataset clean với cấu hình conservative: 6 epoch, eval mỗi 250 step, learning rate `2e-5`, warmup 1 epoch, global grad clip `1.0`. `tools/paddleocr_train_gpu.ps1` validate PaddleOCR SER dataset trước khi train; `tools/paddleocr_eval_ser.ps1` dùng để đánh giá best checkpoint trên `train`/`val`/`test`. Rule clean hiện tại giữ keyword/context như "Tổng cộng", "Thanh toán", "Ngày bán", "Thời gian" nếu annotation có text và geometry hợp lệ; không demote `TOTAL_COST` vì thiếu số tiền và không demote `TIMESTAMP` vì thiếu ngày/giờ. `boxes_and_transcripts` trong MC-OCR có nhiều transcript rỗng, nên prepare script dùng `mcocr_train_df.csv` làm nguồn target text chính thức: recover box target rỗng khi bbox overlap tốt, append CSV target annotation còn thiếu, và bỏ qua box `OTHER` rỗng. Chưa tích hợp model trained vào web app cho tới khi có prediction report đủ tin cậy.
+## Model State
 
-## Cách chạy
+The web app uses this checkpoint:
+
+```text
+archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/output/ser_vi_layoutxlm_finrecon_4field/best_accuracy
+```
+
+This checkpoint came from the 10 epoch GPU run:
+
+```text
+archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/reports/gpu_10epoch_tracked.*
+```
+
+Known metrics:
+
+```text
+Validation F1/hmean: 0.9510869565
+Validation precision: 0.9472259811
+Validation recall:    0.9549795362
+
+Test F1/hmean:        0.9111257406
+Test precision:       0.9069462647
+Test recall:          0.9153439153
+```
+
+Two continuation attempts after the 10 epoch run were deleted because they did not improve the model:
+
+- LR `1e-5`, target 50 epochs: validation F1 dropped to about `0.931`.
+- LR `2e-6`, target 30 epochs: validation F1 stayed below baseline, around `0.950` then `0.9486`.
+
+Conclusion:
+
+```text
+Do not assume longer LayoutXLM training will improve this dataset.
+The current 10 epoch checkpoint remains the best known checkpoint.
+```
+
+## OCR vs KIE
+
+The pipeline has two distinct layers:
+
+- PaddleOCR detects/recognizes text from the receipt image.
+- LayoutXLM/SER classifies recognized text tokens into `SELLER`, `ADDRESS`, `TIMESTAMP`, `TOTAL_COST`, or `OTHER`.
+
+If the app misreads characters such as `I/l/1`, `O/0`, or `S/5`, that is mostly an OCR recognition issue, not a LayoutXLM field classification issue.
+
+Likely next model work:
+
+1. Fine-tune PaddleOCR text recognition on MC-OCR text crops.
+2. Add blur/noise/JPEG/low-resolution augmentation.
+3. Track OCR `CER`/`WER` before and after.
+4. Keep the current LayoutXLM checkpoint unless a new validation/test run beats it.
+
+## Dataset
+
+Raw dataset:
+
+```text
+archive/source_mcocr/
+```
+
+Prepared/clean KIE dataset:
+
+```text
+archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/
+```
+
+Current label set:
+
+```text
+OTHER
+SELLER
+ADDRESS
+TIMESTAMP
+TOTAL_COST
+```
+
+Current split sizes from validation:
+
+```text
+train: 929 documents, 19775 annotations
+val:   112 documents, 2392 annotations
+test:  112 documents, 2341 annotations
+```
+
+Clean rule policy:
+
+- Keep valid `TOTAL_COST` keyword/context lines even if the line itself has no amount.
+- Keep valid `TIMESTAMP` keyword/context lines even if the line itself has no date/time.
+- Skip only truly unusable annotations such as empty text or invalid geometry.
+- Do not overwrite raw MC-OCR data.
+
+## Cache and Disk Policy
+
+Do not write PaddleOCR/PaddleNLP cache to drive C.
+
+Scripts load:
+
+```text
+scripts/training/paddleocr/env.ps1
+```
+
+This keeps cache inside:
+
+```text
+.cache/paddlenlp
+.cache/paddle
+.cache/huggingface
+.cache/pip
+.cache/tmp
+```
+
+Ignored local-heavy folders:
+
+```text
+.venvs/
+.cache/
+external/PaddleOCR/
+archive/source_mcocr/
+archive/prepared/
+archive/models/
+backend/data/
+frontend/node_modules/
+frontend/dist/
+```
+
+## Run App
 
 Backend:
 
 ```powershell
 cd "D:\Du-an\Invoice Automation & Reconciliation System\backend"
-.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
 Frontend:
@@ -90,14 +227,42 @@ cd "D:\Du-an\Invoice Automation & Reconciliation System\frontend"
 npm run dev
 ```
 
-Frontend mặc định: `http://127.0.0.1:5173`
+Frontend:
 
-Backend docs: `http://127.0.0.1:8000/docs`
+```text
+http://127.0.0.1:5173
+```
 
-## Việc nên làm tiếp
+Backend docs:
 
-- Hoàn thiện integration model field extractor vào backend OCR service.
-- Thêm alias API `/api/receipts/*` nếu muốn đổi public API sạch hơn nhưng vẫn giữ `/api/invoices/*` tương thích.
-- Chuẩn hóa bảng công nợ vendor: receipt -> payable -> payment batch -> bank reconciliation.
-- Bổ sung màn review OCR tập trung vào 4 field chính trước, line items để sau.
-- Thêm báo cáo vendor payable đơn giản cho chủ quán: còn nợ ai, đã trả ai, giao dịch nào chưa khớp.
+```text
+http://127.0.0.1:8000/docs
+```
+
+## Useful Training Commands
+
+GPU check:
+
+```powershell
+.\scripts\training\paddleocr\gpu_check.ps1
+```
+
+Train current LayoutXLM/SER config:
+
+```powershell
+.\scripts\training\paddleocr\train_gpu.ps1
+```
+
+Evaluate current best checkpoint:
+
+```powershell
+.\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
+```
+
+## Recommended Next Steps
+
+1. Test more real receipt images through the current web app and save failure cases.
+2. Build a small error report by field: missed `SELLER`, wrong `ADDRESS`, wrong `TIMESTAMP`, wrong `TOTAL_COST`.
+3. Train/fine-tune PaddleOCR text recognition if the main failures are character-level OCR mistakes.
+4. Only retrain LayoutXLM if labels/data split change or there is a clear field-classification failure pattern.
+5. After extraction quality is acceptable, decide whether to rebuild a small-business workflow around receipt capture, payable review, and optional payment reconciliation.
