@@ -8,8 +8,6 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from app.utils import parse_amount, parse_date
-
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BACKEND_DIR = REPO_ROOT / "backend"
@@ -178,35 +176,6 @@ def _join_label_text(tokens: list[dict[str, Any]], label: str) -> str | None:
     return re.sub(r"\s+", " ", " ".join(texts)).strip()
 
 
-def _extract_date(text: str | None) -> str | None:
-    if not text:
-        return None
-    exact = parse_date(text)
-    if exact:
-        return exact
-    match = re.search(r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b", text)
-    if not match:
-        return None
-    value = match.group(1)
-    parts = re.split(r"[/-]", value)
-    if len(parts[-1]) == 2:
-        value = f"{parts[0]}/{parts[1]}/20{parts[2]}"
-    return parse_date(value)
-
-
-def _extract_amount(text: str | None) -> float | None:
-    if not text:
-        return None
-    amounts: list[float] = []
-    for match in re.finditer(r"(?<!\d)(\d[\d\s.,]{2,})(?!\d)", text):
-        amount = parse_amount(match.group(1))
-        if amount is not None:
-            amounts.append(amount)
-    if amounts:
-        return max(amounts)
-    return parse_amount(text)
-
-
 def model_tokens_to_payload(tokens: list[dict[str, Any]]) -> dict[str, Any]:
     seller_text = _join_label_text(tokens, "SELLER")
     address_text = _join_label_text(tokens, "ADDRESS")
@@ -220,20 +189,12 @@ def model_tokens_to_payload(tokens: list[dict[str, Any]]) -> dict[str, Any]:
         labelled_lines.append(f"[{_normalize_label(token.get('pred'))}] {text}")
 
     return {
-        "invoice_number": None,
-        "vendor_name": seller_text,
-        "vendor_address": address_text,
-        "invoice_date": _extract_date(timestamp_text),
-        "total_amount": _extract_amount(total_text),
-        "currency": "VND",
-        "source_type": "paddleocr_ser_model_only",
-        "ocr_confidence": None,
         "raw_text": "\n".join(labelled_lines),
         "model_fields": {
-            "seller": seller_text,
-            "address": address_text,
-            "timestamp": timestamp_text,
-            "total_cost": total_text,
+            "SELLER": seller_text,
+            "ADDRESS": address_text,
+            "TIMESTAMP": timestamp_text,
+            "TOTAL_COST": total_text,
         },
         "model_tokens": [
             {

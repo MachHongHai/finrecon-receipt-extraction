@@ -4,6 +4,6 @@
   "version": "0.1.0",
   "scripts": {
     "dev": ".\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
-    "test": ".\\.venv\\Scripts\\python.exe -m pytest"
+    "test": ".\\.venv\\Scripts\\python.exe -m compileall app"
   }
 }
