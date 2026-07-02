@@ -169,6 +169,28 @@ Better next training work:
    - OCR: CER/WER
    - KIE/SER: precision/recall/F1
 
+OCR recognition fine-tune setup is prepared from MC-OCR 2021:
+
+```text
+archive/prepared/mcocr2021_text_recognition_paddleocr
+```
+
+It uses the MC-OCR text crop labels:
+
+```text
+train: 5285 rows
+val:   1300 rows
+dictionary: 180 characters
+config: rec_svtr_lcnet_mcocr2021.yml
+```
+
+Train/eval:
+
+```powershell
+.\scripts\training\paddleocr\recognition_train_gpu.ps1
+.\scripts\training\paddleocr\recognition_eval.ps1 -UseGpu
+```
+
 ## 11. Run Commands
 
 Backend:

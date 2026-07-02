@@ -12,6 +12,8 @@ Project cache:       .cache/
 SER dataset:         archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser
 SER train config:    archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/ser_vi_layoutxlm_finrecon_4field.yml
 Best checkpoint:     archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/output/ser_vi_layoutxlm_finrecon_4field/best_accuracy
+OCR rec dataset:     archive/prepared/mcocr2021_text_recognition_paddleocr
+OCR rec config:      archive/prepared/mcocr2021_text_recognition_paddleocr/rec_svtr_lcnet_mcocr2021.yml
 ```
 
 ## Cache Policy
@@ -124,6 +126,53 @@ Evaluate current best checkpoint:
 ```powershell
 .\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
 ```
+
+## Fine-Tune PaddleOCR Text Recognition
+
+This is separate from LayoutXLM/SER. Use this when the web app reads the right field region but OCR confuses characters such as `I/l/1`, `O/0`, `S/5`, accents, or blurry text.
+
+Prepare MC-OCR 2021 recognition crops:
+
+```powershell
+python scripts\datasets\export_mcocr_text_recognition_dataset.py --clear --copy-mode hardlink
+python scripts\datasets\validate_paddleocr_rec_dataset.py --dataset-dir archive\prepared\mcocr2021_text_recognition_paddleocr
+```
+
+Current export summary:
+
+```text
+train rows: 5285
+val rows: 1300
+missing images: 0
+dictionary characters: 180
+max text length: 139 observed, 160 configured
+```
+
+Train recognition model:
+
+```powershell
+.\scripts\training\paddleocr\recognition_train_gpu.ps1
+```
+
+Smoke train one epoch before a longer run:
+
+```powershell
+.\scripts\training\paddleocr\recognition_train_gpu.ps1 -RunName rec_smoke_1epoch -EpochNum 1 -BatchSize 8
+```
+
+If you have a compatible PaddleOCR recognition pretrained checkpoint, pass it explicitly:
+
+```powershell
+.\scripts\training\paddleocr\recognition_train_gpu.ps1 -PretrainedModel "archive\models\paddleocr\your_rec_pretrained\best_accuracy"
+```
+
+Evaluate recognition checkpoint:
+
+```powershell
+.\scripts\training\paddleocr\recognition_eval.ps1 -UseGpu
+```
+
+Tracked recognition metrics are `acc` and `norm_edit_dis`. For OCR recognition, these matter more than the KIE metrics `precision`, `recall`, and `hmean`.
 
 ## Recreate Prepared Dataset
 

@@ -142,6 +142,26 @@ Evaluate best checkpoint on test split:
 .\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
 ```
 
+Prepare OCR recognition fine-tuning data from MC-OCR 2021:
+
+```powershell
+python scripts\datasets\export_mcocr_text_recognition_dataset.py --clear --copy-mode hardlink
+python scripts\datasets\validate_paddleocr_rec_dataset.py --dataset-dir archive\prepared\mcocr2021_text_recognition_paddleocr
+```
+
+Fine-tune/evaluate PaddleOCR text recognition:
+
+```powershell
+.\scripts\training\paddleocr\recognition_train_gpu.ps1
+.\scripts\training\paddleocr\recognition_eval.ps1 -UseGpu
+```
+
+Smoke train OCR recognition for one epoch:
+
+```powershell
+.\scripts\training\paddleocr\recognition_train_gpu.ps1 -RunName rec_smoke_1epoch -EpochNum 1 -BatchSize 8
+```
+
 Validate backend/frontend quickly:
 
 ```powershell

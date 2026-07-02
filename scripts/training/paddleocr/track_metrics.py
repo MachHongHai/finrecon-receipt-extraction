@@ -59,6 +59,8 @@ def parse_log(log_path: Path, run_name: str) -> list[dict[str, Any]]:
             "epoch": int(epoch_match.group(1)) if epoch_match else None,
             "epoch_total": int(epoch_match.group(2)) if epoch_match else None,
             "step": int(step_match.group(1)) if step_match else None,
+            "acc": metrics.get("acc"),
+            "norm_edit_dis": metrics.get("norm_edit_dis"),
             "precision": metrics.get("precision"),
             "recall": metrics.get("recall"),
             "f1": metrics.get("hmean"),
@@ -81,7 +83,23 @@ def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
 
 def write_csv(path: Path, records: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = ["run_name", "event", "line", "epoch", "epoch_total", "step", "precision", "recall", "f1", "hmean", "loss", "lr", "fps"]
+    fieldnames = [
+        "run_name",
+        "event",
+        "line",
+        "epoch",
+        "epoch_total",
+        "step",
+        "acc",
+        "norm_edit_dis",
+        "precision",
+        "recall",
+        "f1",
+        "hmean",
+        "loss",
+        "lr",
+        "fps",
+    ]
     with path.open("w", encoding="utf-8-sig", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
@@ -93,10 +111,19 @@ def build_summary(records: list[dict[str, Any]], run_name: str, log_path: Path) 
     best_records = [record for record in records if record["event"] == "best"]
     eval_records = [record for record in records if record["event"] == "eval"]
     train_records = [record for record in records if record["event"] == "train"]
-    best = max(
-        (record for record in records if record.get("f1") is not None),
-        key=lambda record: float(record.get("f1") or 0),
-        default=None,
+    metric_priority = ("f1", "hmean", "acc", "norm_edit_dis")
+    best_metric_name = next(
+        (name for name in metric_priority if any(record.get(name) is not None for record in records)),
+        "",
+    )
+    best = (
+        max(
+            (record for record in records if record.get(best_metric_name) is not None),
+            key=lambda record: float(record.get(best_metric_name) or 0),
+            default=None,
+        )
+        if best_metric_name
+        else None
     )
     return {
         "run_name": run_name,
@@ -105,6 +132,7 @@ def build_summary(records: list[dict[str, Any]], run_name: str, log_path: Path) 
         "train_points": len(train_records),
         "eval_points": len(eval_records),
         "best_points": len(best_records),
+        "best_metric_name": best_metric_name,
         "best": best,
         "last_eval": eval_records[-1] if eval_records else None,
         "last_train": train_records[-1] if train_records else None,

@@ -82,6 +82,10 @@ scripts/datasets/prepare_receipt_4field_dataset.py
 scripts/datasets/clean_receipt_4field_dataset.py
 scripts/datasets/export_paddleocr_ser_dataset.py
 scripts/datasets/validate_paddleocr_ser_dataset.py
+scripts/datasets/export_mcocr_text_recognition_dataset.py
+scripts/datasets/validate_paddleocr_rec_dataset.py
+scripts/training/paddleocr/recognition_train_gpu.ps1
+scripts/training/paddleocr/recognition_eval.ps1
 ```
 
 ## Model State
@@ -137,6 +141,34 @@ Likely next model work:
 2. Add blur/noise/JPEG/low-resolution augmentation.
 3. Track OCR `CER`/`WER` before and after.
 4. Keep the current LayoutXLM checkpoint unless a new validation/test run beats it.
+
+OCR recognition fine-tune source has been prepared at:
+
+```text
+archive/prepared/mcocr2021_text_recognition_paddleocr
+```
+
+It contains:
+
+```text
+train.txt: 5285 rows
+val.txt:   1300 rows
+dict/mcocr2021_vi_receipt_dict.txt: 180 characters
+rec_svtr_lcnet_mcocr2021.yml
+```
+
+Train/eval commands:
+
+```powershell
+.\scripts\training\paddleocr\recognition_train_gpu.ps1
+.\scripts\training\paddleocr\recognition_eval.ps1 -UseGpu
+```
+
+Smoke train before a full run:
+
+```powershell
+.\scripts\training\paddleocr\recognition_train_gpu.ps1 -RunName rec_smoke_1epoch -EpochNum 1 -BatchSize 8
+```
 
 ## Dataset
 
