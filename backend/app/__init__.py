@@ -1,1 +1,1 @@
-"""FinRecon Receipt AI backend package."""
+"""FinRecon Receipt Field Extraction backend package."""

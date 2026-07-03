@@ -74,9 +74,10 @@ Frontend hiện cho chọn 3 cấu hình:
 
 | Option | API value | Mục đích |
 | --- | --- | --- |
-| PaddleOCR baseline | `paddleocr_original` | Baseline mặc định từ PaddleOCR package |
-| PP-OCRv4 pretrained | `paddleocr_pretrained` | Pipeline OCR pretrained chính thức PP-OCRv4 |
-| MC-OCR fine-tuned recognizer | `paddleocr_trained` | Text recognizer đã fine-tune từ MC-OCR 2021 |
+| PaddleOCR package default | `paddleocr_original` | PaddleOCR default configuration, package-level baseline |
+| PP-OCRv4 Chinese pretrained | `paddleocr_pretrained` | Official PP-OCRv4 pretrained OCR with `lang=ch`; useful baseline but weak for Vietnamese diacritics |
+| PP-OCRv4 Vietnamese/Latin pretrained | `paddleocr_vi_pretrained` | Official PaddleOCR pretrained OCR with `lang=vi`, mapped to Latin recognizer for Vietnamese diacritics |
+| MC-OCR fine-tuned recognizer | `paddleocr_trained` | Project OCR recognizer fine-tuned from MC-OCR 2021 |
 
 ### 4.2. KIE/SER Stage
 
@@ -111,7 +112,7 @@ Form fields:
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `file` | image | yes | `.jpg`, `.jpeg`, `.png`, `.bmp`, `.webp` |
-| `ocr_engine` | string | no | `paddleocr_original`, `paddleocr_pretrained`, `paddleocr_trained` |
+| `ocr_engine` | string | no | `paddleocr_original`, `paddleocr_pretrained`, `paddleocr_vi_pretrained`, `paddleocr_trained` |
 | `kie_engine` | string | no | `kie_pretrained`, `kie_trained` |
 
 Response chính:
@@ -139,6 +140,8 @@ Response chính:
   ]
 }
 ```
+
+Default OCR engine hiện là `paddleocr_vi_pretrained` vì pipeline `lang=vi` phù hợp hơn với tiếng Việt có dấu. Option `paddleocr_pretrained` được giữ riêng cho PP-OCRv4 Chinese pretrained (`lang=ch`) để benchmark rõ ràng, không dùng lẫn tên với Vietnamese/Latin.
 
 ## 6. Model Và Metrics Hiện Tại
 
@@ -268,7 +271,7 @@ frontend/dist/
 ### Backend
 
 ```powershell
-cd "D:\Du-an\Invoice Automation & Reconciliation System\backend"
+cd "D:\Du-an\finrecon-receipt-extraction\backend"
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
@@ -284,7 +287,7 @@ http://127.0.0.1:8000/docs
 ### Frontend
 
 ```powershell
-cd "D:\Du-an\Invoice Automation & Reconciliation System\frontend"
+cd "D:\Du-an\finrecon-receipt-extraction\frontend"
 npm install
 npm run dev
 ```
@@ -359,6 +362,14 @@ Script này đảm bảo KIE inference có thể:
 - Nhận OCR config động từ backend.
 - Dùng `inference.json` khi export model bằng Paddle 3.
 - Xử lý output recognition head tương thích với custom character dictionary.
+
+Backend cũng ép `HOME` và `USERPROFILE` của subprocess PaddleOCR về thư mục `.cache` trong repo, nên các official OCR inference models tải lần đầu sẽ nằm dưới:
+
+```text
+.cache/.paddleocr/
+```
+
+thay vì `C:\Users\<user>\.paddleocr`.
 
 ## 12. Kiểm Tra Nhanh
 

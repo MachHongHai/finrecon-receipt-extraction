@@ -51,25 +51,37 @@ INFER_SCRIPT = PADDLEOCR_ROOT / "tools" / "infer_kie_token_ser.py"
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 FIELD_LABELS = {"SELLER", "ADDRESS", "TIMESTAMP", "TOTAL_COST"}
 
+# Keep these option keys explicit. "pretrained" means the official Chinese
+# PP-OCRv4 pipeline. Vietnamese/Latin is a separate option so benchmarking is
+# not ambiguous.
 OCR_ENGINE_PROFILES: dict[str, dict[str, Any]] = {
     "paddleocr_original": {
-        "label": "PaddleOCR baseline",
-        "description": "Pipeline OCR mặc định của PaddleOCR package.",
+        "label": "PaddleOCR package default",
+        "description": "PaddleOCR default configuration. This is only a package baseline.",
         "requires_trained_recognizer": False,
         "overrides": {},
     },
     "paddleocr_pretrained": {
-        "label": "PP-OCRv4 pretrained",
-        "description": "Text detection/recognition pretrained chính thức của PaddleOCR.",
+        "label": "PP-OCRv4 Chinese pretrained",
+        "description": "Official PP-OCRv4 pretrained OCR with lang=ch. Useful baseline, weak for Vietnamese diacritics.",
         "requires_trained_recognizer": False,
         "overrides": {
             "Global.ocr_version": "PP-OCRv4",
             "Global.ocr_lang": "ch",
         },
     },
+    "paddleocr_vi_pretrained": {
+        "label": "PP-OCRv4 Vietnamese/Latin pretrained",
+        "description": "Official PaddleOCR pretrained OCR with lang=vi, mapped to the Latin recognizer for Vietnamese diacritics.",
+        "requires_trained_recognizer": False,
+        "overrides": {
+            "Global.ocr_version": "PP-OCRv4",
+            "Global.ocr_lang": "vi",
+        },
+    },
     "paddleocr_trained": {
         "label": "MC-OCR fine-tuned recognizer",
-        "description": "Text recognizer đã fine-tune trên dữ liệu MC-OCR 2021.",
+        "description": "Project OCR recognizer fine-tuned from MC-OCR 2021 and exported to inference format.",
         "requires_trained_recognizer": True,
         "overrides": {
             "Global.rec_algorithm": "SVTR_LCNet",
@@ -82,16 +94,16 @@ OCR_ENGINE_PROFILES: dict[str, dict[str, Any]] = {
 KIE_ENGINE_PROFILES: dict[str, dict[str, Any]] = {
     "kie_pretrained": {
         "label": "LayoutXLM pretrained baseline",
-        "description": "Backbone pretrained, chưa nạp checkpoint phân loại 4 field.",
+        "description": "Pretrained LayoutXLM backbone without the project 4-field SER checkpoint.",
         "requires_trained_checkpoint": False,
     },
     "kie_trained": {
         "label": "LayoutXLM-SER fine-tuned",
-        "description": "Checkpoint SER đã fine-tune cho SELLER, ADDRESS, TIMESTAMP, TOTAL_COST.",
+        "description": "Project SER checkpoint fine-tuned for SELLER, ADDRESS, TIMESTAMP, and TOTAL_COST.",
         "requires_trained_checkpoint": True,
     },
 }
-DEFAULT_OCR_ENGINE = "paddleocr_trained"
+DEFAULT_OCR_ENGINE = "paddleocr_vi_pretrained"
 DEFAULT_KIE_ENGINE = "kie_trained"
 
 
@@ -121,7 +133,7 @@ def _validate_choice(value: str | None, choices: dict[str, dict[str, Any]], defa
     key = value or default
     if key not in choices:
         valid = ", ".join(choices)
-        raise KieModelError(f"{kind} không hợp lệ: {key}. Giá trị hợp lệ: {valid}")
+        raise KieModelError(f"{kind} is invalid: {key}. Valid values: {valid}")
     return key
 
 
@@ -139,7 +151,7 @@ def _validate_runtime(ocr_engine: str, kie_engine: str) -> tuple[Path, Path, Pat
             if not path.exists():
                 missing.append(str(path))
     if missing:
-        raise KieModelError("Thiếu runtime/model PaddleOCR: " + "; ".join(missing))
+        raise KieModelError("Missing PaddleOCR runtime/model: " + "; ".join(missing))
     return (
         python_path,
         config_path,
@@ -168,7 +180,7 @@ def get_model_runtime_options() -> dict[str, Any]:
         missing = list(base_missing)
         if profile["requires_trained_recognizer"]:
             missing.extend(path for path in (rec_model_dir, rec_char_dict) if not path.exists())
-        reason = "Thiếu: " + "; ".join(str(path) for path in missing) if missing else None
+        reason = "Missing: " + "; ".join(str(path) for path in missing) if missing else None
         ocr_options.append(_option_payload(key, profile, not missing, reason))
 
     kie_options = []
@@ -176,7 +188,7 @@ def get_model_runtime_options() -> dict[str, Any]:
         missing = list(base_missing)
         if profile["requires_trained_checkpoint"] and not checkpoint_dir.exists():
             missing.append(checkpoint_dir)
-        reason = "Thiếu: " + "; ".join(str(path) for path in missing) if missing else None
+        reason = "Missing: " + "; ".join(str(path) for path in missing) if missing else None
         kie_options.append(_option_payload(key, profile, not missing, reason))
 
     return {
@@ -203,6 +215,8 @@ def _runtime_env() -> dict[str, str]:
             "HF_HOME": str(cache_dir / "huggingface"),
             "XDG_CACHE_HOME": str(cache_dir),
             "PIP_CACHE_DIR": str(cache_dir / "pip"),
+            "HOME": str(cache_dir),
+            "USERPROFILE": str(cache_dir),
             "TEMP": str(temp_dir),
             "TMP": str(temp_dir),
         }
@@ -263,18 +277,18 @@ def _run_inference(
     )
     log_text = "\n".join(part for part in (completed.stdout, completed.stderr) if part)
     if completed.returncode != 0:
-        raise KieModelError(f"PaddleOCR inference lỗi code {completed.returncode}:\n{log_text[-4000:]}")
+        raise KieModelError(f"PaddleOCR inference failed with code {completed.returncode}:\n{log_text[-4000:]}")
 
     result_path = output_dir / "infer_results.txt"
     if not result_path.exists():
-        raise KieModelError(f"PaddleOCR không sinh infer_results.txt.\n{log_text[-4000:]}")
+        raise KieModelError(f"PaddleOCR did not create infer_results.txt.\n{log_text[-4000:]}")
 
     first_line = result_path.read_text(encoding="utf-8", errors="replace").splitlines()[0]
     try:
         _, payload = first_line.split("\t", 1)
         ocr_info = json.loads(payload).get("ocr_info", [])
     except Exception as exc:
-        raise KieModelError(f"Không đọc được output PaddleOCR: {exc}") from exc
+        raise KieModelError(f"Could not parse PaddleOCR output: {exc}") from exc
     return ocr_info, str(output_dir)
 
 

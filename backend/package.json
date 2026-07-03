@@ -1,5 +1,5 @@
 {
-  "name": "finrecon-ai-backend",
+  "name": "finrecon-receipt-extraction-backend",
   "private": true,
   "version": "0.1.0",
   "scripts": {

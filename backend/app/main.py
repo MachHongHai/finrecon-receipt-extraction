@@ -113,7 +113,7 @@ def model_options() -> dict[str, Any]:
 @app.post("/api/scan-image")
 async def scan_image(
     file: UploadFile = File(...),
-    ocr_engine: str = Form("paddleocr_trained"),
+    ocr_engine: str = Form("paddleocr_vi_pretrained"),
     kie_engine: str = Form("kie_trained"),
 ) -> dict[str, Any]:
     if not is_model_supported_file(file.filename):

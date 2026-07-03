@@ -18,32 +18,38 @@ const API_BASE =
 const FIELD_ORDER = ["SELLER", "ADDRESS", "TIMESTAMP", "TOTAL_COST"];
 
 const FIELD_META = {
-  SELLER: { title: "SELLER", subtitle: "Tên đơn vị bán hàng" },
-  ADDRESS: { title: "ADDRESS", subtitle: "Địa chỉ đơn vị bán hàng" },
-  TIMESTAMP: { title: "TIMESTAMP", subtitle: "Thời điểm phát sinh giao dịch" },
-  TOTAL_COST: { title: "TOTAL_COST", subtitle: "Tổng giá trị thanh toán" },
+  SELLER: { title: "SELLER", subtitle: "Seller / merchant name" },
+  ADDRESS: { title: "ADDRESS", subtitle: "Seller address" },
+  TIMESTAMP: { title: "TIMESTAMP", subtitle: "Transaction date/time" },
+  TOTAL_COST: { title: "TOTAL_COST", subtitle: "Total paid amount" },
 };
 
 const FALLBACK_OPTIONS = {
-  default_ocr_engine: "paddleocr_trained",
+  default_ocr_engine: "paddleocr_vi_pretrained",
   default_kie_engine: "kie_trained",
   ocr_engines: [
     {
       value: "paddleocr_original",
-      label: "PaddleOCR baseline",
-      description: "Pipeline OCR mặc định của PaddleOCR package.",
+      label: "PaddleOCR package default",
+      description: "PaddleOCR default configuration. Package-level baseline.",
       available: true,
     },
     {
       value: "paddleocr_pretrained",
-      label: "PP-OCRv4 pretrained",
-      description: "Text detection/recognition pretrained chính thức của PaddleOCR.",
+      label: "PP-OCRv4 Chinese pretrained",
+      description: "Official PP-OCRv4 with lang=ch. Baseline, weak for Vietnamese diacritics.",
+      available: true,
+    },
+    {
+      value: "paddleocr_vi_pretrained",
+      label: "PP-OCRv4 Vietnamese/Latin pretrained",
+      description: "Official PaddleOCR with lang=vi, mapped to Latin recognizer for Vietnamese diacritics.",
       available: true,
     },
     {
       value: "paddleocr_trained",
       label: "MC-OCR fine-tuned recognizer",
-      description: "Text recognizer đã fine-tune trên dữ liệu MC-OCR 2021.",
+      description: "Project OCR recognizer fine-tuned from MC-OCR 2021.",
       available: true,
     },
   ],
@@ -51,13 +57,13 @@ const FALLBACK_OPTIONS = {
     {
       value: "kie_pretrained",
       label: "LayoutXLM pretrained baseline",
-      description: "Backbone pretrained, chưa nạp checkpoint phân loại 4 field.",
+      description: "Pretrained LayoutXLM backbone without the project 4-field SER checkpoint.",
       available: true,
     },
     {
       value: "kie_trained",
       label: "LayoutXLM-SER fine-tuned",
-      description: "Checkpoint SER đã fine-tune cho SELLER, ADDRESS, TIMESTAMP, TOTAL_COST.",
+      description: "Project SER checkpoint fine-tuned for SELLER, ADDRESS, TIMESTAMP, and TOTAL_COST.",
       available: true,
     },
   ],
@@ -126,14 +132,14 @@ function App() {
       try {
         const response = await fetch(`${API_BASE}/api/model-options`);
         const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || "Không tải được cấu hình inference.");
+        if (!response.ok) throw new Error(data.detail || "Could not load inference configuration.");
         if (cancelled) return;
         setOptions(data);
         setOcrEngine(data.default_ocr_engine || FALLBACK_OPTIONS.default_ocr_engine);
         setKieEngine(data.default_kie_engine || FALLBACK_OPTIONS.default_kie_engine);
       } catch (error) {
         if (!cancelled) {
-          setNotice(`Lỗi tải cấu hình inference: ${error.message}`);
+          setNotice(`Configuration error: ${error.message}`);
         }
       }
     }
@@ -163,11 +169,11 @@ function App() {
 
   async function runInference() {
     if (!selectedFile) {
-      setNotice("Chọn một ảnh hóa đơn trước khi chạy inference.");
+      setNotice("Choose a receipt image before running inference.");
       return;
     }
     if (!selectedOcrOption?.available || !selectedKieOption?.available) {
-      setNotice("Pipeline đang chọn chưa sẵn sàng. Hãy chọn cấu hình khác hoặc kiểm tra model trong backend.");
+      setNotice("Selected pipeline is not available. Choose another option or check backend model files.");
       return;
     }
 
@@ -183,11 +189,11 @@ function App() {
         body: form,
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.detail || "Không chạy được inference.");
+      if (!response.ok) throw new Error(data.detail || "Inference failed.");
       setResult(data);
-      setNotice(`Inference hoàn tất với ${data.ocr_engine_label} + ${data.kie_engine_label}.`);
+      setNotice(`Inference completed with ${data.ocr_engine_label} + ${data.kie_engine_label}.`);
     } catch (error) {
-      setNotice(`Lỗi: ${error.message}`);
+      setNotice(`Error: ${error.message}`);
     } finally {
       setBusy(false);
     }
@@ -201,9 +207,9 @@ function App() {
       setResult(null);
       if (localPreview) URL.revokeObjectURL(localPreview);
       setLocalPreview("");
-      setNotice("Đã xóa ảnh upload và output inference tạm.");
+      setNotice("Temporary uploads and inference outputs were cleared.");
     } catch (error) {
-      setNotice(`Lỗi: ${error.message}`);
+      setNotice(`Error: ${error.message}`);
     } finally {
       setBusy(false);
     }
@@ -225,7 +231,7 @@ function App() {
             </div>
             <h1 className="text-2xl font-black tracking-tight text-white">FinRecon Receipt Field Extraction</h1>
             <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-              Workbench kiểm thử pipeline OCR và Sequence Entity Recognition cho hóa đơn bán lẻ Việt Nam.
+              Compare OCR and Sequence Entity Recognition pipelines for Vietnamese retail receipt images.
             </p>
           </div>
 
@@ -236,7 +242,7 @@ function App() {
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-800 disabled:opacity-50"
           >
             <Trash2 size={16} />
-            Xóa output tạm
+            Clear temporary outputs
           </button>
         </header>
 
@@ -254,7 +260,7 @@ function App() {
                 ) : (
                   <>
                     <Upload className="mb-3 text-zinc-500" size={32} />
-                    <span className="text-sm font-semibold text-zinc-300">Chọn ảnh hóa đơn</span>
+                    <span className="text-sm font-semibold text-zinc-300">Choose receipt image</span>
                     <span className="mt-1 text-xs text-zinc-500">JPG, PNG, BMP, WEBP</span>
                   </>
                 )}
@@ -282,14 +288,14 @@ function App() {
               <div className="grid gap-4">
                 <EngineSelector
                   title="OCR stage"
-                  description="Text detection và text recognition từ ảnh hóa đơn."
+                  description="Text detection and text recognition from receipt image."
                   options={options.ocr_engines}
                   value={ocrEngine}
                   onChange={setOcrEngine}
                 />
                 <EngineSelector
                   title="KIE/SER stage"
-                  description="Token classification để gán nhãn trường thông tin nghiệp vụ."
+                  description="Token classification into business fields."
                   options={options.kie_engines}
                   value={kieEngine}
                   onChange={setKieEngine}
@@ -308,7 +314,7 @@ function App() {
 
               {notice && (
                 <div className="mt-3 flex gap-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-300">
-                  {notice.startsWith("Lỗi") ? (
+                  {notice.startsWith("Error") || notice.startsWith("Configuration") ? (
                     <AlertCircle className="mt-0.5 shrink-0 text-rose-400" size={16} />
                   ) : (
                     <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-400" size={16} />
@@ -324,7 +330,7 @@ function App() {
                 Evaluation mode
               </div>
               <p className="text-xs leading-relaxed text-zinc-400">
-                Không dùng fallback hoặc rule-based extraction. Raw SER labels và OCR tokens được giữ nguyên để phân tích lỗi model.
+                No fallback or rule-based extraction is used. Raw SER labels and OCR tokens are preserved for model error analysis.
               </p>
             </div>
           </aside>
@@ -332,7 +338,7 @@ function App() {
           <section className="flex min-h-0 flex-col gap-4">
             {result && (
               <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-xs text-zinc-400">
-                Pipeline đã chạy:{" "}
+                Executed pipeline:{" "}
                 <span className="font-bold text-emerald-300">{result.ocr_engine_label}</span>
                 <span className="mx-2 text-zinc-600">+</span>
                 <span className="font-bold text-emerald-300">{result.kie_engine_label}</span>
@@ -347,7 +353,7 @@ function App() {
                     <div className="text-xs font-black uppercase tracking-widest opacity-70">{meta.title}</div>
                     <div className="mt-1 text-xs font-semibold opacity-60">{meta.subtitle}</div>
                     <div className="mt-3 min-h-[56px] text-lg font-extrabold leading-snug">
-                      {field.value || <span className="text-sm font-semibold opacity-45">Chưa có kết quả</span>}
+                      {field.value || <span className="text-sm font-semibold opacity-45">No result yet</span>}
                     </div>
                   </div>
                 );
@@ -358,7 +364,7 @@ function App() {
               <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
                 <h2 className="mb-3 text-sm font-bold text-white">Raw SER output</h2>
                 <pre className="max-h-[520px] overflow-auto rounded-lg border border-zinc-800 bg-black/40 p-3 text-xs leading-relaxed text-zinc-300">
-                  {result?.raw_text || "Chưa có output. Upload ảnh, chọn pipeline và chạy inference."}
+                  {result?.raw_text || "No output yet. Upload an image, choose a pipeline, then run inference."}
                 </pre>
               </div>
 
@@ -382,7 +388,7 @@ function App() {
                       {!result?.tokens?.length && (
                         <tr>
                           <td colSpan="2" className="px-3 py-8 text-center text-zinc-500">
-                            Chưa có token.
+                            No OCR token yet.
                           </td>
                         </tr>
                       )}

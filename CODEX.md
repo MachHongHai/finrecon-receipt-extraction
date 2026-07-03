@@ -1,4 +1,4 @@
-# FinRecon Receipt AI - Codex Handoff Context
+# FinRecon Receipt Field Extraction - Codex Handoff Context
 
 Last updated: 2026-07-03
 
@@ -138,9 +138,10 @@ The pipeline has two distinct layers:
 Current web OCR choices:
 
 ```text
-paddleocr_original   - PaddleOCR package default OCR.
-paddleocr_pretrained - Official PaddleOCR/PP-OCRv4 pretrained pipeline.
-paddleocr_trained    - Exported MC-OCR fine-tuned recognizer below.
+paddleocr_original      - PaddleOCR package default OCR.
+paddleocr_pretrained    - Official PP-OCRv4 Chinese pretrained OCR, lang=ch.
+paddleocr_vi_pretrained - Official PaddleOCR Vietnamese/Latin pretrained OCR, lang=vi.
+paddleocr_trained       - Exported MC-OCR fine-tuned recognizer below.
 ```
 
 Current trained web OCR recognition layer:
@@ -290,14 +291,14 @@ frontend/dist/
 Backend:
 
 ```powershell
-cd "D:\Du-an\Invoice Automation & Reconciliation System\backend"
+cd "D:\Du-an\finrecon-receipt-extraction\backend"
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
 Frontend:
 
 ```powershell
-cd "D:\Du-an\Invoice Automation & Reconciliation System\frontend"
+cd "D:\Du-an\finrecon-receipt-extraction\frontend"
 npm run dev
 ```
 
