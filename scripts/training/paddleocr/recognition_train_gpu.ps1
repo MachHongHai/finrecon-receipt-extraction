@@ -1,7 +1,8 @@
 param(
     [string]$ConfigPath = "archive\prepared\mcocr2021_text_recognition_paddleocr\rec_svtr_lcnet_mcocr2021.yml",
     [string]$RunName = "",
-    [string]$PretrainedModel = "",
+    [string]$PretrainedModel = "archive\models\paddleocr\PP-OCRv4_mobile_rec_pretrained\PP-OCRv4_mobile_rec_pretrained.pdparams",
+    [switch]$NoPretrained,
     [int]$EpochNum = 0,
     [int]$BatchSize = 0,
     [double]$LearningRate = 0
@@ -24,10 +25,21 @@ $LogPath = Join-Path $ReportsDir "$ResolvedRunName.log"
 $JsonlPath = Join-Path $ReportsDir "$ResolvedRunName.metrics.jsonl"
 $CsvPath = Join-Path $ReportsDir "$ResolvedRunName.metrics.csv"
 $SummaryPath = Join-Path $ReportsDir "$ResolvedRunName.summary.json"
+$ResolvedPretrained = ""
 
 foreach ($path in @($Python, $TrainScript, $Config, $Validator, $Tracker)) {
     if (-not (Test-Path -LiteralPath $path)) {
         throw "Missing required file: $path"
+    }
+}
+if (-not $NoPretrained -and $PretrainedModel) {
+    $ResolvedPretrained = if ([System.IO.Path]::IsPathRooted($PretrainedModel)) {
+        $PretrainedModel
+    } else {
+        Join-Path $RepoRoot $PretrainedModel
+    }
+    if (-not (Test-Path -LiteralPath $ResolvedPretrained)) {
+        throw "Missing PaddleOCR pretrained model: $ResolvedPretrained`nDownload it first with: .\scripts\training\paddleocr\download_rec_pretrained.ps1"
     }
 }
 
@@ -38,9 +50,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $Overrides = @("Global.use_gpu=True")
-if ($PretrainedModel) {
-    $Pretrained = if ([System.IO.Path]::IsPathRooted($PretrainedModel)) { $PretrainedModel } else { Join-Path $RepoRoot $PretrainedModel }
-    $Overrides += "Global.pretrained_model=$Pretrained"
+if ($ResolvedPretrained) {
+    $Overrides += "Global.pretrained_model=$($ResolvedPretrained.Replace('\', '/'))"
 }
 if ($EpochNum -gt 0) {
     $Overrides += "Global.epoch_num=$EpochNum"
@@ -51,6 +62,12 @@ if ($BatchSize -gt 0) {
 }
 if ($LearningRate -gt 0) {
     $Overrides += "Optimizer.lr.learning_rate=$LearningRate"
+}
+
+if ($ResolvedPretrained) {
+    Write-Host "Using pretrained model: $ResolvedPretrained"
+} else {
+    Write-Warning "Training recognition model without pretrained weights."
 }
 
 $PreviousErrorActionPreference = $ErrorActionPreference

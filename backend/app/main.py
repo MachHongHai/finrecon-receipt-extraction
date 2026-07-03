@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import shutil
 import re
+import shutil
 import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -14,11 +14,12 @@ from app.database import DEFAULT_DATA_DIR, UPLOAD_DIR, ensure_storage
 from app.services.kie_model import (
     KieModelError,
     extract_receipt_fields_model_only,
+    get_model_runtime_options,
     is_model_supported_file,
 )
 
 
-app = FastAPI(title="FinRecon Receipt Field Extractor API", version="2.0.0")
+app = FastAPI(title="FinRecon Receipt Field Extraction API", version="2.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -45,17 +46,11 @@ def _preview_url(path: Path) -> str:
 
 def _field_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     model_fields = payload.get("model_fields") or {}
-    raw_fields = {
-        "SELLER": model_fields.get("SELLER"),
-        "ADDRESS": model_fields.get("ADDRESS"),
-        "TIMESTAMP": model_fields.get("TIMESTAMP"),
-        "TOTAL_COST": model_fields.get("TOTAL_COST"),
-    }
     return [
-        _field_row("SELLER", raw_fields["SELLER"]),
-        _field_row("ADDRESS", raw_fields["ADDRESS"]),
-        _field_row("TIMESTAMP", raw_fields["TIMESTAMP"]),
-        _field_row("TOTAL_COST", raw_fields["TOTAL_COST"]),
+        _field_row("SELLER", model_fields.get("SELLER")),
+        _field_row("ADDRESS", model_fields.get("ADDRESS")),
+        _field_row("TIMESTAMP", model_fields.get("TIMESTAMP")),
+        _field_row("TOTAL_COST", model_fields.get("TOTAL_COST")),
     ]
 
 
@@ -98,9 +93,8 @@ def _extract_amount_display(text: str) -> str | None:
         raw = match.group(1).strip()
         normalized = re.sub(r"\s+", "", raw)
         digits = re.sub(r"\D", "", normalized)
-        if len(digits) < 3:
-            continue
-        candidates.append((len(digits), normalized))
+        if len(digits) >= 3:
+            candidates.append((len(digits), normalized))
     if not candidates:
         return None
     return max(candidates, key=lambda item: item[0])[1]
@@ -108,11 +102,20 @@ def _extract_amount_display(text: str) -> str | None:
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "mode": "model_only"}
+    return {"status": "ok", "mode": "model_selectable"}
+
+
+@app.get("/api/model-options")
+def model_options() -> dict[str, Any]:
+    return get_model_runtime_options()
 
 
 @app.post("/api/scan-image")
-async def scan_image(file: UploadFile = File(...)) -> dict[str, Any]:
+async def scan_image(
+    file: UploadFile = File(...),
+    ocr_engine: str = Form("paddleocr_trained"),
+    kie_engine: str = Form("kie_trained"),
+) -> dict[str, Any]:
     if not is_model_supported_file(file.filename):
         raise HTTPException(
             status_code=400,
@@ -125,14 +128,22 @@ async def scan_image(file: UploadFile = File(...)) -> dict[str, Any]:
 
     saved_path = _save_upload(file.filename, content)
     try:
-        payload = extract_receipt_fields_model_only(saved_path)
+        payload = extract_receipt_fields_model_only(
+            saved_path,
+            ocr_engine=ocr_engine,
+            kie_engine=kie_engine,
+        )
     except KieModelError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return {
         "file_name": Path(file.filename or saved_path.name).name,
         "preview_url": _preview_url(saved_path),
-        "mode": "paddleocr_layoutxlm_model_only",
+        "mode": "paddleocr_layoutxlm_model_selectable",
+        "ocr_engine": payload.get("ocr_engine"),
+        "kie_engine": payload.get("kie_engine"),
+        "ocr_engine_label": payload.get("ocr_engine_label"),
+        "kie_engine_label": payload.get("kie_engine_label"),
         "fields": _field_rows(payload),
         "raw_text": payload.get("raw_text") or "",
         "tokens": payload.get("model_tokens") or [],

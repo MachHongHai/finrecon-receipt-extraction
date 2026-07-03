@@ -111,20 +111,27 @@ def build_summary(records: list[dict[str, Any]], run_name: str, log_path: Path) 
     best_records = [record for record in records if record["event"] == "best"]
     eval_records = [record for record in records if record["event"] == "eval"]
     train_records = [record for record in records if record["event"] == "train"]
-    metric_priority = ("f1", "hmean", "acc", "norm_edit_dis")
+    scored_records = best_records or eval_records or train_records
+    metric_priority = ("f1", "hmean", "acc", "norm_edit_dis", "loss")
     best_metric_name = next(
-        (name for name in metric_priority if any(record.get(name) is not None for record in records)),
+        (name for name in metric_priority if any(record.get(name) is not None for record in scored_records)),
         "",
     )
-    best = (
-        max(
-            (record for record in records if record.get(best_metric_name) is not None),
-            key=lambda record: float(record.get(best_metric_name) or 0),
+
+    def score_record(record: dict[str, Any]) -> tuple[float, float, float]:
+        metric_value = float(record.get(best_metric_name) or 0) if best_metric_name else 0.0
+        norm_edit_dis = float(record.get("norm_edit_dis") or 0)
+        loss = float(record.get("loss") or 0)
+        loss_score = -loss if loss else 0.0
+        return metric_value, norm_edit_dis, loss_score
+
+    best = None
+    if best_metric_name:
+        best = max(
+            (record for record in scored_records if record.get(best_metric_name) is not None),
+            key=score_record,
             default=None,
         )
-        if best_metric_name
-        else None
-    )
     return {
         "run_name": run_name,
         "created_at": datetime.now(timezone.utc).isoformat(),

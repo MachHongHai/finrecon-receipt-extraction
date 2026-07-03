@@ -187,6 +187,7 @@ config: rec_svtr_lcnet_mcocr2021.yml
 Train/eval:
 
 ```powershell
+.\scripts\training\paddleocr\download_rec_pretrained.ps1
 .\scripts\training\paddleocr\recognition_train_gpu.ps1
 .\scripts\training\paddleocr\recognition_eval.ps1 -UseGpu
 ```

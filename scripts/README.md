@@ -48,10 +48,22 @@ python scripts\datasets\export_mcocr_text_recognition_dataset.py --clear --copy-
 python scripts\datasets\validate_paddleocr_rec_dataset.py --dataset-dir archive\prepared\mcocr2021_text_recognition_paddleocr
 ```
 
-Fine-tune PaddleOCR text recognition:
+Download the PaddleOCR PP-OCRv4 mobile recognition pretrained weights:
+
+```powershell
+.\scripts\training\paddleocr\download_rec_pretrained.ps1
+```
+
+Fine-tune PaddleOCR text recognition from pretrained weights:
 
 ```powershell
 .\scripts\training\paddleocr\recognition_train_gpu.ps1
+```
+
+Apply local PaddleOCR runtime patches needed by the web scanner after refreshing `external/PaddleOCR`:
+
+```powershell
+.\scripts\training\paddleocr\apply_runtime_patches.ps1
 ```
 
 Smoke test recognition training:

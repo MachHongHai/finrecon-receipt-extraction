@@ -14,6 +14,7 @@ SER train config:    archive/prepared/finrecon_receipt_4field_clean/paddleocr_se
 Best checkpoint:     archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/output/ser_vi_layoutxlm_finrecon_4field/best_accuracy
 OCR rec dataset:     archive/prepared/mcocr2021_text_recognition_paddleocr
 OCR rec config:      archive/prepared/mcocr2021_text_recognition_paddleocr/rec_svtr_lcnet_mcocr2021.yml
+Web OCR rec model:   archive/models/paddleocr/mcocr2021_rec_svtr_lcnet_best_inference
 ```
 
 ## Cache Policy
@@ -148,7 +149,13 @@ dictionary characters: 180
 max text length: 139 observed, 160 configured
 ```
 
-Train recognition model:
+Download the default PP-OCRv4 mobile recognition pretrained weights:
+
+```powershell
+.\scripts\training\paddleocr\download_rec_pretrained.ps1
+```
+
+Train recognition model from pretrained weights:
 
 ```powershell
 .\scripts\training\paddleocr\recognition_train_gpu.ps1
@@ -160,7 +167,13 @@ Smoke train one epoch before a longer run:
 .\scripts\training\paddleocr\recognition_train_gpu.ps1 -RunName rec_smoke_1epoch -EpochNum 1 -BatchSize 8
 ```
 
-If you have a compatible PaddleOCR recognition pretrained checkpoint, pass it explicitly:
+The default pretrained file is:
+
+```text
+archive\models\paddleocr\PP-OCRv4_mobile_rec_pretrained\PP-OCRv4_mobile_rec_pretrained.pdparams
+```
+
+To use a different compatible PaddleOCR recognition checkpoint, pass it explicitly:
 
 ```powershell
 .\scripts\training\paddleocr\recognition_train_gpu.ps1 -PretrainedModel "archive\models\paddleocr\your_rec_pretrained\best_accuracy"
@@ -173,6 +186,41 @@ Evaluate recognition checkpoint:
 ```
 
 Tracked recognition metrics are `acc` and `norm_edit_dis`. For OCR recognition, these matter more than the KIE metrics `precision`, `recall`, and `hmean`.
+
+## Web OCR Recognition Integration
+
+The web scan pipeline currently uses this exported recognition inference model:
+
+```text
+archive/models/paddleocr/mcocr2021_rec_svtr_lcnet_best_inference
+```
+
+It was exported from the training checkpoint:
+
+```text
+archive/prepared/mcocr2021_text_recognition_paddleocr/output/rec_svtr_lcnet_mcocr2021/best_accuracy
+```
+
+Important export detail: use `Global.checkpoints`, not `Global.pretrained_model`, when exporting a trained checkpoint. `pretrained_model` can leave the original PP-OCR head in place.
+
+```powershell
+.\.venvs\paddleocr-gpu\Scripts\python.exe external\PaddleOCR\tools\export_model.py `
+  -c archive\prepared\mcocr2021_text_recognition_paddleocr\rec_svtr_lcnet_mcocr2021.yml `
+  -o Global.use_gpu=False `
+     Global.checkpoints="D:/Du-an/Invoice Automation & Reconciliation System/archive/prepared/mcocr2021_text_recognition_paddleocr/output/rec_svtr_lcnet_mcocr2021/best_accuracy" `
+     Global.pretrained_model= `
+     Global.save_inference_dir="D:/Du-an/Invoice Automation & Reconciliation System/archive/models/paddleocr/mcocr2021_rec_svtr_lcnet_best_inference"
+```
+
+Current integrated checkpoint:
+
+```text
+best_epoch: 20
+acc: 0.4382812466
+norm_edit_dis: 0.8654821225
+```
+
+This is an honest test checkpoint, not a finished OCR model. It may produce noisy full-receipt recognition until training is continued and evaluated.
 
 ## Recreate Prepared Dataset
 

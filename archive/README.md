@@ -101,6 +101,7 @@ python scripts\datasets\validate_paddleocr_rec_dataset.py --dataset-dir archive\
 .\scripts\training\paddleocr\gpu_check.ps1
 .\scripts\training\paddleocr\train_gpu.ps1
 .\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
+.\scripts\training\paddleocr\download_rec_pretrained.ps1
 .\scripts\training\paddleocr\recognition_train_gpu.ps1
 .\scripts\training\paddleocr\recognition_eval.ps1 -UseGpu
 ```

@@ -12,7 +12,14 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BACKEND_DIR = REPO_ROOT / "backend"
 PADDLEOCR_ROOT = REPO_ROOT / "external" / "PaddleOCR"
-DEFAULT_CONFIG_PATH = REPO_ROOT / "archive" / "prepared" / "finrecon_receipt_4field_clean" / "paddleocr_ser" / "ser_vi_layoutxlm_finrecon_4field.yml"
+DEFAULT_CONFIG_PATH = (
+    REPO_ROOT
+    / "archive"
+    / "prepared"
+    / "finrecon_receipt_4field_clean"
+    / "paddleocr_ser"
+    / "ser_vi_layoutxlm_finrecon_4field.yml"
+)
 DEFAULT_CHECKPOINT_DIR = (
     REPO_ROOT
     / "archive"
@@ -23,11 +30,69 @@ DEFAULT_CHECKPOINT_DIR = (
     / "ser_vi_layoutxlm_finrecon_4field"
     / "best_accuracy"
 )
+DEFAULT_REC_MODEL_DIR = (
+    REPO_ROOT
+    / "archive"
+    / "models"
+    / "paddleocr"
+    / "mcocr2021_rec_svtr_lcnet_best_inference"
+)
+DEFAULT_REC_CHAR_DICT = (
+    REPO_ROOT
+    / "archive"
+    / "prepared"
+    / "mcocr2021_text_recognition_paddleocr"
+    / "dict"
+    / "mcocr2021_vi_receipt_dict.txt"
+)
 DEFAULT_PADDLE_PYTHON = REPO_ROOT / ".venvs" / "paddleocr-gpu" / "Scripts" / "python.exe"
 DEFAULT_WORK_DIR = BACKEND_DIR / "data" / "kie_inference"
 INFER_SCRIPT = PADDLEOCR_ROOT / "tools" / "infer_kie_token_ser.py"
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 FIELD_LABELS = {"SELLER", "ADDRESS", "TIMESTAMP", "TOTAL_COST"}
+
+OCR_ENGINE_PROFILES: dict[str, dict[str, Any]] = {
+    "paddleocr_original": {
+        "label": "PaddleOCR baseline",
+        "description": "Pipeline OCR mặc định của PaddleOCR package.",
+        "requires_trained_recognizer": False,
+        "overrides": {},
+    },
+    "paddleocr_pretrained": {
+        "label": "PP-OCRv4 pretrained",
+        "description": "Text detection/recognition pretrained chính thức của PaddleOCR.",
+        "requires_trained_recognizer": False,
+        "overrides": {
+            "Global.ocr_version": "PP-OCRv4",
+            "Global.ocr_lang": "ch",
+        },
+    },
+    "paddleocr_trained": {
+        "label": "MC-OCR fine-tuned recognizer",
+        "description": "Text recognizer đã fine-tune trên dữ liệu MC-OCR 2021.",
+        "requires_trained_recognizer": True,
+        "overrides": {
+            "Global.rec_algorithm": "SVTR_LCNet",
+            "Global.rec_image_shape": "3,48,640",
+            "Global.max_text_length": "160",
+            "Global.use_space_char": "True",
+        },
+    },
+}
+KIE_ENGINE_PROFILES: dict[str, dict[str, Any]] = {
+    "kie_pretrained": {
+        "label": "LayoutXLM pretrained baseline",
+        "description": "Backbone pretrained, chưa nạp checkpoint phân loại 4 field.",
+        "requires_trained_checkpoint": False,
+    },
+    "kie_trained": {
+        "label": "LayoutXLM-SER fine-tuned",
+        "description": "Checkpoint SER đã fine-tune cho SELLER, ADDRESS, TIMESTAMP, TOTAL_COST.",
+        "requires_trained_checkpoint": True,
+    },
+}
+DEFAULT_OCR_ENGINE = "paddleocr_trained"
+DEFAULT_KIE_ENGINE = "kie_trained"
 
 
 class KieModelError(RuntimeError):
@@ -42,19 +107,84 @@ def _path_from_env(name: str, default: Path) -> Path:
     return Path(os.getenv(name, str(default))).resolve()
 
 
-def _validate_runtime() -> tuple[Path, Path, Path]:
-    python_path = _path_from_env("PADDLEOCR_PYTHON", DEFAULT_PADDLE_PYTHON)
-    config_path = _path_from_env("PADDLEOCR_SER_CONFIG", DEFAULT_CONFIG_PATH)
-    checkpoint_dir = _path_from_env("PADDLEOCR_SER_CHECKPOINT", DEFAULT_CHECKPOINT_DIR)
+def _runtime_paths() -> tuple[Path, Path, Path, Path, Path]:
+    return (
+        _path_from_env("PADDLEOCR_PYTHON", DEFAULT_PADDLE_PYTHON),
+        _path_from_env("PADDLEOCR_SER_CONFIG", DEFAULT_CONFIG_PATH),
+        _path_from_env("PADDLEOCR_SER_CHECKPOINT", DEFAULT_CHECKPOINT_DIR),
+        _path_from_env("PADDLEOCR_REC_MODEL_DIR", DEFAULT_REC_MODEL_DIR),
+        _path_from_env("PADDLEOCR_REC_CHAR_DICT", DEFAULT_REC_CHAR_DICT),
+    )
 
+
+def _validate_choice(value: str | None, choices: dict[str, dict[str, Any]], default: str, kind: str) -> str:
+    key = value or default
+    if key not in choices:
+        valid = ", ".join(choices)
+        raise KieModelError(f"{kind} không hợp lệ: {key}. Giá trị hợp lệ: {valid}")
+    return key
+
+
+def _validate_runtime(ocr_engine: str, kie_engine: str) -> tuple[Path, Path, Path | None, Path | None, Path | None]:
+    python_path, config_path, checkpoint_dir, rec_model_dir, rec_char_dict = _runtime_paths()
     missing = [
         str(path)
-        for path in (python_path, config_path, checkpoint_dir, INFER_SCRIPT, PADDLEOCR_ROOT)
+        for path in (python_path, config_path, INFER_SCRIPT, PADDLEOCR_ROOT)
         if not path.exists()
     ]
+    if KIE_ENGINE_PROFILES[kie_engine]["requires_trained_checkpoint"] and not checkpoint_dir.exists():
+        missing.append(str(checkpoint_dir))
+    if OCR_ENGINE_PROFILES[ocr_engine]["requires_trained_recognizer"]:
+        for path in (rec_model_dir, rec_char_dict):
+            if not path.exists():
+                missing.append(str(path))
     if missing:
         raise KieModelError("Thiếu runtime/model PaddleOCR: " + "; ".join(missing))
-    return python_path, config_path, checkpoint_dir
+    return (
+        python_path,
+        config_path,
+        checkpoint_dir if KIE_ENGINE_PROFILES[kie_engine]["requires_trained_checkpoint"] else None,
+        rec_model_dir if OCR_ENGINE_PROFILES[ocr_engine]["requires_trained_recognizer"] else None,
+        rec_char_dict if OCR_ENGINE_PROFILES[ocr_engine]["requires_trained_recognizer"] else None,
+    )
+
+
+def _option_payload(key: str, profile: dict[str, Any], available: bool, reason: str | None) -> dict[str, Any]:
+    return {
+        "value": key,
+        "label": profile["label"],
+        "description": profile["description"],
+        "available": available,
+        "reason": reason,
+    }
+
+
+def get_model_runtime_options() -> dict[str, Any]:
+    python_path, config_path, checkpoint_dir, rec_model_dir, rec_char_dict = _runtime_paths()
+    base_missing = [path for path in (python_path, config_path, INFER_SCRIPT, PADDLEOCR_ROOT) if not path.exists()]
+
+    ocr_options = []
+    for key, profile in OCR_ENGINE_PROFILES.items():
+        missing = list(base_missing)
+        if profile["requires_trained_recognizer"]:
+            missing.extend(path for path in (rec_model_dir, rec_char_dict) if not path.exists())
+        reason = "Thiếu: " + "; ".join(str(path) for path in missing) if missing else None
+        ocr_options.append(_option_payload(key, profile, not missing, reason))
+
+    kie_options = []
+    for key, profile in KIE_ENGINE_PROFILES.items():
+        missing = list(base_missing)
+        if profile["requires_trained_checkpoint"] and not checkpoint_dir.exists():
+            missing.append(checkpoint_dir)
+        reason = "Thiếu: " + "; ".join(str(path) for path in missing) if missing else None
+        kie_options.append(_option_payload(key, profile, not missing, reason))
+
+    return {
+        "default_ocr_engine": DEFAULT_OCR_ENGINE,
+        "default_kie_engine": DEFAULT_KIE_ENGINE,
+        "ocr_engines": ocr_options,
+        "kie_engines": kie_options,
+    }
 
 
 def _runtime_env() -> dict[str, str]:
@@ -80,8 +210,18 @@ def _runtime_env() -> dict[str, str]:
     return env
 
 
-def _run_inference(image_path: Path, use_gpu: bool = True, timeout_seconds: int = 180) -> tuple[list[dict[str, Any]], str]:
-    python_path, config_path, checkpoint_dir = _validate_runtime()
+def _run_inference(
+    image_path: Path,
+    *,
+    ocr_engine: str,
+    kie_engine: str,
+    use_gpu: bool = True,
+    timeout_seconds: int = 180,
+) -> tuple[list[dict[str, Any]], str]:
+    ocr_engine = _validate_choice(ocr_engine, OCR_ENGINE_PROFILES, DEFAULT_OCR_ENGINE, "OCR engine")
+    kie_engine = _validate_choice(kie_engine, KIE_ENGINE_PROFILES, DEFAULT_KIE_ENGINE, "KIE engine")
+    python_path, config_path, checkpoint_dir, rec_model_dir, rec_char_dict = _validate_runtime(ocr_engine, kie_engine)
+
     work_dir = _path_from_env("PADDLEOCR_KIE_WORK_DIR", DEFAULT_WORK_DIR)
     output_dir = work_dir / uuid.uuid4().hex
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -95,8 +235,22 @@ def _run_inference(image_path: Path, use_gpu: bool = True, timeout_seconds: int 
         f"Global.use_gpu={'True' if use_gpu else 'False'}",
         f"Global.infer_img={image_path}",
         f"Global.save_res_path={output_dir}",
-        f"Architecture.Backbone.checkpoints={checkpoint_dir}",
     ]
+    if checkpoint_dir:
+        args.append(f"Architecture.Backbone.checkpoints={checkpoint_dir}")
+    else:
+        args.append("Architecture.Backbone.checkpoints=")
+
+    for name, value in OCR_ENGINE_PROFILES[ocr_engine].get("overrides", {}).items():
+        args.append(f"{name}={value}")
+    if rec_model_dir and rec_char_dict:
+        args.extend(
+            [
+                f"Global.kie_rec_model_dir={rec_model_dir}",
+                f"Global.rec_char_dict_path={rec_char_dict}",
+            ]
+        )
+
     completed = subprocess.run(
         args,
         cwd=str(PADDLEOCR_ROOT),
@@ -177,24 +331,19 @@ def _join_label_text(tokens: list[dict[str, Any]], label: str) -> str | None:
 
 
 def model_tokens_to_payload(tokens: list[dict[str, Any]]) -> dict[str, Any]:
-    seller_text = _join_label_text(tokens, "SELLER")
-    address_text = _join_label_text(tokens, "ADDRESS")
-    timestamp_text = _join_label_text(tokens, "TIMESTAMP")
-    total_text = _join_label_text(tokens, "TOTAL_COST")
     labelled_lines = []
     for token in sorted(tokens, key=lambda item: (_bbox_top(item), _bbox_left(item))):
         text = _token_text(token)
-        if not text:
-            continue
-        labelled_lines.append(f"[{_normalize_label(token.get('pred'))}] {text}")
+        if text:
+            labelled_lines.append(f"[{_normalize_label(token.get('pred'))}] {text}")
 
     return {
         "raw_text": "\n".join(labelled_lines),
         "model_fields": {
-            "SELLER": seller_text,
-            "ADDRESS": address_text,
-            "TIMESTAMP": timestamp_text,
-            "TOTAL_COST": total_text,
+            "SELLER": _join_label_text(tokens, "SELLER"),
+            "ADDRESS": _join_label_text(tokens, "ADDRESS"),
+            "TIMESTAMP": _join_label_text(tokens, "TIMESTAMP"),
+            "TOTAL_COST": _join_label_text(tokens, "TOTAL_COST"),
         },
         "model_tokens": [
             {
@@ -209,8 +358,25 @@ def model_tokens_to_payload(tokens: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def extract_receipt_fields_model_only(image_path: Path, *, use_gpu: bool = True) -> dict[str, Any]:
-    tokens, output_dir = _run_inference(image_path.resolve(), use_gpu=use_gpu)
+def extract_receipt_fields_model_only(
+    image_path: Path,
+    *,
+    ocr_engine: str = DEFAULT_OCR_ENGINE,
+    kie_engine: str = DEFAULT_KIE_ENGINE,
+    use_gpu: bool = True,
+) -> dict[str, Any]:
+    ocr_engine = _validate_choice(ocr_engine, OCR_ENGINE_PROFILES, DEFAULT_OCR_ENGINE, "OCR engine")
+    kie_engine = _validate_choice(kie_engine, KIE_ENGINE_PROFILES, DEFAULT_KIE_ENGINE, "KIE engine")
+    tokens, output_dir = _run_inference(
+        image_path.resolve(),
+        ocr_engine=ocr_engine,
+        kie_engine=kie_engine,
+        use_gpu=use_gpu,
+    )
     payload = model_tokens_to_payload(tokens)
     payload["model_output_dir"] = output_dir
+    payload["ocr_engine"] = ocr_engine
+    payload["kie_engine"] = kie_engine
+    payload["ocr_engine_label"] = OCR_ENGINE_PROFILES[ocr_engine]["label"]
+    payload["kie_engine_label"] = KIE_ENGINE_PROFILES[kie_engine]["label"]
     return payload

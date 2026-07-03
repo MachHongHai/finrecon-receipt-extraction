@@ -1,6 +1,6 @@
 # FinRecon Receipt AI - Codex Handoff Context
 
-Last updated: 2026-07-02
+Last updated: 2026-07-03
 
 ## Current Direction
 
@@ -15,7 +15,7 @@ SELLER, ADDRESS, TIMESTAMP, TOTAL_COST.
 
 The active app must be honest about model behavior:
 
-- Use the trained PaddleOCR/LayoutXLM pipeline only.
+- Let the user choose OCR/KIE runtime options from the UI for comparison.
 - Do not fallback to regex-generated data or synthetic metadata.
 - Keep raw labels and token table visible for debugging.
 - The four summary cards may post-process display values, but raw model output must remain visible.
@@ -27,7 +27,8 @@ Current UI:
 - Single receipt scanning page.
 - Upload one image.
 - Preview uploaded image.
-- Run model.
+- Select OCR engine and KIE engine.
+- Run scan.
 - Show four field cards:
   - `SELLER`
   - `ADDRESS`
@@ -38,6 +39,7 @@ Current UI:
 Current backend:
 
 - `GET /api/health`
+- `GET /api/model-options`
 - `POST /api/scan-image`
 - `DELETE /api/scan-results`
 
@@ -133,6 +135,45 @@ The pipeline has two distinct layers:
 - PaddleOCR detects/recognizes text from the receipt image.
 - LayoutXLM/SER classifies recognized text tokens into `SELLER`, `ADDRESS`, `TIMESTAMP`, `TOTAL_COST`, or `OTHER`.
 
+Current web OCR choices:
+
+```text
+paddleocr_original   - PaddleOCR package default OCR.
+paddleocr_pretrained - Official PaddleOCR/PP-OCRv4 pretrained pipeline.
+paddleocr_trained    - Exported MC-OCR fine-tuned recognizer below.
+```
+
+Current trained web OCR recognition layer:
+
+```text
+archive/models/paddleocr/mcocr2021_rec_svtr_lcnet_best_inference
+```
+
+It was exported from the interrupted recognition training run:
+
+```text
+archive/prepared/mcocr2021_text_recognition_paddleocr/output/rec_svtr_lcnet_mcocr2021/best_accuracy
+```
+
+Best known OCR recognition metric from that run:
+
+```text
+best_epoch: 20
+acc: 0.4382812466
+norm_edit_dis: 0.8654821225
+```
+
+This checkpoint is integrated into web scanning for honest testing, but it is not yet a strong production OCR recognizer. In full receipt tests it can produce noisy text, so improving OCR recognition remains the next model priority.
+
+Current web KIE choices:
+
+```text
+kie_pretrained - LayoutXLM pretrained backbone without the trained 4-field checkpoint.
+kie_trained    - Current best LayoutXLM/SER checkpoint for SELLER, ADDRESS, TIMESTAMP, TOTAL_COST.
+```
+
+Use `kie_pretrained` only as a baseline/debug option. It has not learned the project labels and its field output is expected to be poor.
+
 If the app misreads characters such as `I/l/1`, `O/0`, or `S/5`, that is mostly an OCR recognition issue, not a LayoutXLM field classification issue.
 
 Likely next model work:
@@ -160,6 +201,7 @@ rec_svtr_lcnet_mcocr2021.yml
 Train/eval commands:
 
 ```powershell
+.\scripts\training\paddleocr\download_rec_pretrained.ps1
 .\scripts\training\paddleocr\recognition_train_gpu.ps1
 .\scripts\training\paddleocr\recognition_eval.ps1 -UseGpu
 ```
