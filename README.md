@@ -1,272 +1,250 @@
-# FinRecon Receipt Field Extraction
+# FinRecon Receipt Extraction
 
-FinRecon Receipt Field Extraction là một workbench OCR/KIE dùng để kiểm thử khả năng trích xuất trường thông tin từ ảnh hóa đơn bán lẻ Việt Nam. Phiên bản hiện tại tập trung vào một bài toán hẹp nhưng có giá trị nền tảng: đọc ảnh hóa đơn, nhận diện text, phân loại token, và gom kết quả về 4 trường nghiệp vụ chính.
+FinRecon Receipt Extraction is an OCR and Key Information Extraction workbench for Vietnamese retail receipts. The project focuses on a narrow, practical computer vision problem: upload a receipt image, run OCR, classify receipt text into business fields, and inspect the model output honestly without rule-based fallback.
 
-## 1. Tóm Tắt Dự Án
+Current extraction targets:
 
-Mục tiêu hiện tại:
-
-```text
-Input:  Ảnh hóa đơn/phiếu bán lẻ Việt Nam
-Output: SELLER, ADDRESS, TIMESTAMP, TOTAL_COST
-```
-
-Hệ thống không dùng fallback rule-based khi kiểm thử model. Raw OCR tokens và raw SER labels luôn được hiển thị để đánh giá trung thực chất lượng model.
-
-Trạng thái scope:
-
-- Đã thu hẹp từ ý tưởng invoice automation/reconciliation lớn thành một module receipt field extraction.
-- Tạm bỏ các workflow vendor master, bank statement, XML invoice, dashboard tài chính, sample generator.
-- Ưu tiên hiện tại là đánh giá chất lượng OCR và KIE trước khi xây lại workflow nghiệp vụ phía trên.
-
-## 2. Bài Toán
-
-Nhiều hóa đơn bán lẻ Việt Nam có ảnh chụp mờ, chữ nhỏ, layout thay đổi, thiếu chuẩn hóa, và có nhiều nhiễu thị giác. Tool này giúp kiểm thử pipeline:
-
-1. Text detection: phát hiện vùng chữ trên ảnh.
-2. Text recognition: nhận diện nội dung chữ.
-3. Key Information Extraction: phân loại từng token/dòng text vào field nghiệp vụ.
-4. Post-processing nhẹ: rút gọn giá trị hiển thị cho ngày và tổng tiền.
-
-Các field hiện hỗ trợ:
-
-| Label | Ý nghĩa |
+| Field | Meaning |
 | --- | --- |
-| `SELLER` | Tên đơn vị bán hàng |
-| `ADDRESS` | Địa chỉ đơn vị bán hàng |
-| `TIMESTAMP` | Ngày/giờ giao dịch |
-| `TOTAL_COST` | Tổng giá trị thanh toán |
-| `OTHER` | Token không thuộc 4 field cần lấy |
+| `SELLER` | Seller, merchant, store, or business name |
+| `ADDRESS` | Seller address |
+| `TIMESTAMP` | Transaction date or date/time |
+| `TOTAL_COST` | Total paid amount |
 
-## 3. Kiến Trúc Tổng Thể
+The current version is intentionally scoped to model evaluation and field extraction. Earlier invoice automation, bank reconciliation, sample generation, and dashboard workflows have been removed from the active application so the repository can focus on OCR/KIE quality first.
 
-```text
-frontend/ React + Vite
-    ↓ multipart/form-data
-backend/ FastAPI
-    ↓ subprocess
-external/PaddleOCR
-    ↓ OCR tokens
-LayoutXLM SER checkpoint
-    ↓ labels
-field aggregation + display normalization
+## Table Of Contents
+
+- [Project Goal](#project-goal)
+- [Why This Project Matters](#why-this-project-matters)
+- [Current Application](#current-application)
+- [Architecture](#architecture)
+- [Technology Stack](#technology-stack)
+- [Model Pipeline](#model-pipeline)
+- [Dataset Strategy](#dataset-strategy)
+- [Repository Structure](#repository-structure)
+- [Run Locally](#run-locally)
+- [API Reference](#api-reference)
+- [Training Workflow](#training-workflow)
+- [Evaluation And Metrics](#evaluation-and-metrics)
+- [Model Artifacts](#model-artifacts)
+- [Git And Artifact Policy](#git-and-artifact-policy)
+- [Roadmap](#roadmap)
+
+## Project Goal
+
+The goal is to build a focused receipt extraction system that can be used to test and improve OCR plus document understanding models for Vietnamese retail receipts.
+
+The target workflow is:
+
+1. Upload a receipt or sales slip image.
+2. Choose an OCR engine.
+3. Choose a KIE/SER model.
+4. Run inference.
+5. Review the four extracted fields.
+6. Inspect raw OCR tokens and raw model labels to understand failures.
+
+This is not currently a full accounting SaaS product. It is a practical research and engineering workbench for validating whether receipt images can be read and structured reliably enough before building higher-level finance workflows on top.
+
+## Why This Project Matters
+
+Vietnamese retail receipts are challenging for standard OCR systems:
+
+- They often come from low-resolution phone photos or thermal printers.
+- Text can be small, blurred, skewed, faded, or compressed.
+- Vietnamese diacritics are frequently lost or confused.
+- Receipt layouts vary heavily between merchants.
+- Important values are mixed with context labels such as `Ngày bán`, `Tổng cộng`, `Thanh toán`, or `Địa chỉ`.
+
+This project separates the problem into two stages:
+
+- **OCR:** detect and recognize text from receipt images.
+- **KIE/SER:** classify each OCR token or line into the correct business field.
+
+That separation makes errors easier to diagnose. If the text is wrong, the issue is usually OCR recognition. If the text is correct but assigned to the wrong field, the issue is usually KIE/SER.
+
+## Current Application
+
+The web app is a single-page inference workbench.
+
+Main interface features:
+
+- Receipt image upload with local preview.
+- OCR engine selector.
+- KIE/SER model selector.
+- Four field cards for `SELLER`, `ADDRESS`, `TIMESTAMP`, and `TOTAL_COST`.
+- Raw SER output panel.
+- OCR token table.
+- Clear temporary upload/inference outputs.
+
+Important design principle:
+
+> The app does not use fallback regex or hand-written extraction rules in the model test path.
+
+Post-processing is only used to normalize display values. For example, if the model labels a full line like `Ngày bán 23/08/2022 5:01:08CH`, the UI can display just the date/time value while still preserving the raw token output for debugging.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  A["Receipt image"] --> B["React + Vite frontend"]
+  B -->|"multipart/form-data"| C["FastAPI backend"]
+  C --> D["PaddleOCR text detection + recognition"]
+  D --> E["LayoutXLM SER / KIE model"]
+  E --> F["Field aggregation"]
+  F --> G["UI field cards"]
+  F --> H["Raw labels + token table"]
 ```
 
-Thành phần chính:
+Runtime responsibilities:
 
-- Frontend: giao diện upload ảnh, chọn pipeline, xem field summary, raw SER output, OCR tokens.
-- Backend: API FastAPI, lưu upload tạm, gọi PaddleOCR inference, chuẩn hóa response.
-- Model runtime: PaddleOCR + LayoutXLM/SER chạy trong môi trường Python riêng.
-- Dataset/training scripts: chuẩn bị dữ liệu MC-OCR, train/eval KIE, train/eval OCR recognition.
+| Layer | Responsibility |
+| --- | --- |
+| Frontend | Upload image, select models, show results and raw output |
+| Backend | Receive image, manage temporary files, call OCR/KIE pipeline, normalize response |
+| PaddleOCR | Text detection and text recognition |
+| LayoutXLM/SER | Token-level field classification |
+| Scripts | Dataset preparation, training, evaluation, and metric tracking |
 
-## 4. Inference Pipeline
+## Technology Stack
 
-Pipeline được chia thành 2 stage rõ ràng.
+### Frontend
 
-### 4.1. OCR Stage
+- React 19
+- Vite
+- Tailwind CSS
+- lucide-react icons
 
-OCR stage chịu trách nhiệm đọc text từ ảnh:
+### Backend
 
-- Text detection: tìm vị trí chữ.
-- Text recognition: chuyển ảnh crop thành chuỗi ký tự.
+- FastAPI
+- Uvicorn
+- Python
+- Local file storage for temporary uploads and inference outputs
 
-Frontend hiện cho chọn 3 cấu hình:
+### Machine Learning
 
-| Option | API value | Mục đích |
+- PaddleOCR
+- PaddlePaddle
+- PaddleNLP
+- LayoutXLM for SER/KIE
+- MC-OCR 2021 based data preparation
+
+### Tooling
+
+- PowerShell scripts for Windows training workflow
+- Separate Python environments for backend and PaddleOCR
+- Local cache redirection to keep Paddle/PaddleNLP/HuggingFace cache inside the project drive
+
+## Model Pipeline
+
+The inference pipeline has two independent choices: OCR engine and KIE engine.
+
+### OCR Options
+
+| UI label | API value | Purpose |
 | --- | --- | --- |
-| PaddleOCR package default | `paddleocr_original` | PaddleOCR default configuration, package-level baseline |
-| PP-OCRv4 Chinese pretrained | `paddleocr_pretrained` | Official PP-OCRv4 pretrained OCR with `lang=ch`; useful baseline but weak for Vietnamese diacritics |
-| PP-OCRv4 Vietnamese/Latin pretrained | `paddleocr_vi_pretrained` | Official PaddleOCR pretrained OCR with `lang=vi`, mapped to Latin recognizer for Vietnamese diacritics |
-| MC-OCR fine-tuned recognizer | `paddleocr_trained` | Project OCR recognizer fine-tuned from MC-OCR 2021 |
+| PaddleOCR package default | `paddleocr_original` | Package-level baseline using PaddleOCR default behavior |
+| PP-OCRv4 Chinese pretrained | `paddleocr_pretrained` | Official `lang=ch` pretrained baseline; useful for comparison but weak for Vietnamese diacritics |
+| PP-OCRv4 Vietnamese/Latin pretrained | `paddleocr_vi_pretrained` | Official `lang=vi`/Latin-oriented pretrained OCR option |
+| MC-OCR fine-tuned recognizer | `paddleocr_trained` | Project OCR recognizer fine-tuned from MC-OCR 2021 text recognition data |
 
-### 4.2. KIE/SER Stage
+### KIE/SER Options
 
-KIE/SER stage nhận OCR tokens và gán nhãn field cho từng token.
-
-Frontend hiện cho chọn 2 cấu hình:
-
-| Option | API value | Mục đích |
+| UI label | API value | Purpose |
 | --- | --- | --- |
-| LayoutXLM pretrained baseline | `kie_pretrained` | Baseline/debug, chưa học 4 field cụ thể |
-| LayoutXLM-SER fine-tuned | `kie_trained` | Checkpoint đã fine-tune cho 4 field hiện tại |
+| LayoutXLM pretrained baseline | `kie_pretrained` | Baseline/debug option without project-specific 4-field fine-tuning |
+| LayoutXLM-SER fine-tuned | `kie_trained` | Project checkpoint fine-tuned for `SELLER`, `ADDRESS`, `TIMESTAMP`, and `TOTAL_COST` |
 
-Lưu ý: `kie_pretrained` không được kỳ vọng cho kết quả tốt. Nó tồn tại để so sánh baseline và debug pipeline.
+### OCR vs KIE
 
-## 5. Backend API
+These two stages solve different problems:
 
-```http
-GET    /api/health
-GET    /api/model-options
-POST   /api/scan-image
-DELETE /api/scan-results
-```
+- PaddleOCR reads text from image regions.
+- LayoutXLM/SER decides which business field each recognized text belongs to.
 
-### `GET /api/model-options`
+For example:
 
-Trả về danh sách OCR/KIE engines, default option và trạng thái model có sẵn hay không.
+- If `Số tiền` is read as `So tien`, the issue is OCR recognition.
+- If `So tien thanh toan 709.000` is correctly read but labeled as `OTHER`, the issue is KIE/SER.
+- If the model labels `So tien thanh toan 709.000` as `TOTAL_COST` and the UI displays `709.000`, that is display normalization, not model cheating.
 
-### `POST /api/scan-image`
+## Dataset Strategy
 
-Form fields:
+The project uses MC-OCR 2021 derived data for receipt understanding experiments.
 
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `file` | image | yes | `.jpg`, `.jpeg`, `.png`, `.bmp`, `.webp` |
-| `ocr_engine` | string | no | `paddleocr_original`, `paddleocr_pretrained`, `paddleocr_vi_pretrained`, `paddleocr_trained` |
-| `kie_engine` | string | no | `kie_pretrained`, `kie_trained` |
-
-Response chính:
-
-```json
-{
-  "file_name": "receipt.jpg",
-  "preview_url": "/uploads/...",
-  "ocr_engine_label": "MC-OCR fine-tuned recognizer",
-  "kie_engine_label": "LayoutXLM-SER fine-tuned",
-  "fields": [
-    {
-      "label": "SELLER",
-      "raw_value": "...",
-      "display_value": "..."
-    }
-  ],
-  "raw_text": "[SELLER] ...",
-  "tokens": [
-    {
-      "text": "...",
-      "label": "SELLER",
-      "points": []
-    }
-  ]
-}
-```
-
-Default OCR engine hiện là `paddleocr_vi_pretrained` vì pipeline `lang=vi` phù hợp hơn với tiếng Việt có dấu. Option `paddleocr_pretrained` được giữ riêng cho PP-OCRv4 Chinese pretrained (`lang=ch`) để benchmark rõ ràng, không dùng lẫn tên với Vietnamese/Latin.
-
-## 6. Model Và Metrics Hiện Tại
-
-### 6.1. KIE/SER Model
-
-Default KIE checkpoint:
+Current label set:
 
 ```text
-archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/output/ser_vi_layoutxlm_finrecon_4field/best_accuracy
+OTHER
+SELLER
+ADDRESS
+TIMESTAMP
+TOTAL_COST
 ```
 
-Training run được giữ lại:
+Dataset policy:
+
+- Keep the raw MC-OCR dataset read-only.
+- Build prepared datasets under `archive/prepared/`.
+- Keep both value lines and useful context lines for KIE.
+- Do not demote `TOTAL_COST` only because a line has no amount.
+- Do not demote `TIMESTAMP` only because a line has no date/time.
+- Remove only genuinely unusable annotations such as empty text or invalid geometry.
+
+This policy is important for KIE because context lines such as `Tổng cộng`, `Thanh toán`, `Ngày bán`, and `Thời gian` help the model understand nearby values.
+
+## Repository Structure
 
 ```text
-archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/reports/gpu_10epoch_tracked.*
+.
+├── backend/
+│   ├── app/
+│   │   ├── main.py
+│   │   └── services/
+│   │       └── kie_model.py
+│   ├── data/                  # ignored, local uploads and inference outputs
+│   ├── package.json
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── main.jsx
+│   │   └── styles.css
+│   └── package.json
+├── scripts/
+│   ├── datasets/              # dataset build/export/validation scripts
+│   ├── evaluation/            # offline evaluation helpers
+│   └── training/
+│       └── paddleocr/         # GPU checks, training, eval, metric tracking
+├── archive/
+│   ├── README.md
+│   ├── source_mcocr/          # ignored, raw dataset
+│   ├── prepared/              # ignored, prepared datasets and train outputs
+│   └── models/                # ignored, exported inference models
+├── external/
+│   └── PaddleOCR/             # ignored, local PaddleOCR source/runtime
+├── CODEX.md                   # internal AI-agent project context
+├── PADDLEOCR_ENV.md           # internal PaddleOCR environment notes
+└── README.md                  # public GitHub README
 ```
 
-Metrics đã ghi nhận:
+The root README is intended for GitHub readers. Internal working context for AI agents and local experiments lives in `CODEX.md`, `PADDLEOCR_ENV.md`, `scripts/README.md`, and `archive/README.md`.
 
-| Split | Precision | Recall | F1/Hmean |
-| --- | ---: | ---: | ---: |
-| Validation | 0.9472259811 | 0.9549795362 | 0.9510869565 |
-| Test | 0.9069462647 | 0.9153439153 | 0.9111257406 |
+## Run Locally
 
-Kết luận hiện tại:
+The application is designed to run backend and frontend separately.
 
-- Checkpoint 10 epoch đang là checkpoint KIE tốt nhất đã giữ.
-- Các lần continuation sau đó không cải thiện baseline.
-- Chỉ nên retrain LayoutXLM/SER nếu thay đổi dataset, label policy, hoặc có failure pattern rõ ràng ở bước phân loại field.
+### Prerequisites
 
-### 6.2. OCR Recognition Model
+- Windows PowerShell
+- Node.js
+- Python
+- A prepared backend virtual environment
+- PaddleOCR runtime under `external/PaddleOCR`
+- Model artifacts under `archive/models/` and/or `archive/prepared/`
 
-Default trained OCR recognizer:
-
-```text
-archive/models/paddleocr/mcocr2021_rec_svtr_lcnet_best_inference
-```
-
-Exported from:
-
-```text
-archive/prepared/mcocr2021_text_recognition_paddleocr/output/rec_svtr_lcnet_mcocr2021/best_accuracy
-```
-
-Current status:
-
-| Metric | Value |
-| --- | ---: |
-| Best epoch | 20 |
-| Accuracy | 0.4382812466 |
-| Normalized edit distance | 0.8654821225 |
-
-Kết luận hiện tại:
-
-- OCR recognizer fine-tuned hiện vẫn là checkpoint thử nghiệm.
-- Model có thể chưa tốt hơn PaddleOCR pretrained trên ảnh hóa đơn thật.
-- Các lỗi như nhầm `I/l/1`, `O/0`, `S/5`, mất dấu, chữ mờ thường là lỗi OCR recognition, không phải lỗi KIE/SER.
-
-## 7. Dataset
-
-Raw dataset được giữ ngoài git:
-
-```text
-archive/source_mcocr/
-```
-
-Prepared KIE dataset:
-
-```text
-archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/
-```
-
-Prepared OCR recognition dataset:
-
-```text
-archive/prepared/mcocr2021_text_recognition_paddleocr/
-```
-
-Label policy:
-
-- Giữ cả value lines và context/keyword lines nếu hữu ích cho KIE.
-- Không demote `TOTAL_COST` chỉ vì dòng không có số tiền.
-- Không demote `TIMESTAMP` chỉ vì dòng không có ngày/giờ.
-- Chỉ loại annotation thật sự không dùng được như empty text hoặc geometry lỗi.
-
-## 8. Cấu Trúc Thư Mục
-
-```text
-backend/
-  app/
-    main.py
-    services/kie_model.py
-  data/
-
-frontend/
-  src/App.jsx
-
-scripts/
-  datasets/
-  training/paddleocr/
-
-archive/
-  source_mcocr/      ignored, raw dataset
-  prepared/          ignored, prepared datasets and train outputs
-  models/            ignored, exported inference models
-
-external/
-  PaddleOCR/         ignored, local PaddleOCR clone/runtime
-```
-
-Các thư mục nặng được ignore để repo có thể push GitHub:
-
-```text
-.venvs/
-.cache/
-external/PaddleOCR/
-archive/source_mcocr/
-archive/prepared/
-archive/models/
-backend/data/
-frontend/node_modules/
-frontend/dist/
-```
-
-## 9. Cài Đặt Và Chạy Ứng Dụng
+Large datasets and model artifacts are intentionally ignored by Git, so a fresh clone needs those artifacts restored separately.
 
 ### Backend
 
@@ -278,7 +256,13 @@ pip install -r requirements.txt
 npm run dev
 ```
 
-Backend docs:
+Backend URL:
+
+```text
+http://127.0.0.1:8000
+```
+
+FastAPI docs:
 
 ```text
 http://127.0.0.1:8000/docs
@@ -292,94 +276,301 @@ npm install
 npm run dev
 ```
 
-Frontend:
+Frontend URL:
 
 ```text
 http://127.0.0.1:5173
 ```
 
-## 10. Training Và Evaluation
+If the local folder has not been renamed yet, use the current folder path instead of `D:\Du-an\finrecon-receipt-extraction`.
 
-GPU check:
+## API Reference
+
+### Health Check
+
+```http
+GET /api/health
+```
+
+Returns backend health status.
+
+### Model Options
+
+```http
+GET /api/model-options
+```
+
+Returns available OCR/KIE engines, default engines, and availability status for local model files.
+
+### Scan Image
+
+```http
+POST /api/scan-image
+```
+
+Form data:
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `file` | image file | yes | Receipt image: `.jpg`, `.jpeg`, `.png`, `.bmp`, `.webp` |
+| `ocr_engine` | string | no | One OCR option from `/api/model-options` |
+| `kie_engine` | string | no | One KIE option from `/api/model-options` |
+
+Example response shape:
+
+```json
+{
+  "file_name": "receipt.jpg",
+  "preview_url": "/uploads/example.jpg",
+  "ocr_engine_label": "PP-OCRv4 Vietnamese/Latin pretrained",
+  "kie_engine_label": "LayoutXLM-SER fine-tuned",
+  "fields": [
+    {
+      "label": "SELLER",
+      "value": "SIÊU THỊ EVMART",
+      "raw_value": "OONGLIAN SIEU THI EVMART",
+      "display_value": "OONGLIAN SIEU THI EVMART"
+    }
+  ],
+  "raw_text": "[SELLER] ...",
+  "tokens": [
+    {
+      "text": "SIEU THI EVMART",
+      "label": "SELLER",
+      "points": []
+    }
+  ]
+}
+```
+
+### Clear Temporary Results
+
+```http
+DELETE /api/scan-results
+```
+
+Deletes temporary uploads and generated inference outputs under `backend/data/`.
+
+## Training Workflow
+
+The project keeps PaddleOCR/LayoutXLM training separate from the web backend.
+
+Environment summary:
+
+| Purpose | Path |
+| --- | --- |
+| PaddleOCR GPU environment | `.venvs/paddleocr-gpu` |
+| PaddleOCR source | `external/PaddleOCR` |
+| Project cache | `.cache/` |
+| KIE/SER dataset export | `archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser` |
+| OCR recognition dataset export | `archive/prepared/mcocr2021_text_recognition_paddleocr` |
+
+All training scripts load:
+
+```powershell
+.\scripts\training\paddleocr\env.ps1
+```
+
+This redirects Paddle, PaddleNLP, HuggingFace, pip, and temp cache into the project `.cache/` folder instead of filling the user profile drive.
+
+### 1. Check GPU
 
 ```powershell
 .\scripts\training\paddleocr\gpu_check.ps1
 ```
 
-Train LayoutXLM/SER:
+Expected healthy output includes:
+
+```text
+cuda True
+gpu_count >= 1
+device gpu:0
+PaddlePaddle works well on 1 GPU
+```
+
+### 2. Prepare KIE/SER Dataset
+
+```powershell
+python scripts\datasets\prepare_receipt_4field_dataset.py --clear --copy-mode hardlink
+python scripts\datasets\clean_receipt_4field_dataset.py --clear --copy-mode hardlink
+python scripts\datasets\export_paddleocr_ser_dataset.py --dataset-dir archive\prepared\finrecon_receipt_4field_clean --output-dir archive\prepared\finrecon_receipt_4field_clean\paddleocr_ser --copy-mode hardlink --epoch-num 10 --eval-step 250 --batch-size 2 --learning-rate 0.00002 --warmup-epoch 1 --clip-norm-global 1.0
+python scripts\datasets\validate_paddleocr_ser_dataset.py --dataset-dir archive\prepared\finrecon_receipt_4field_clean\paddleocr_ser
+```
+
+### 3. Train LayoutXLM/SER
 
 ```powershell
 .\scripts\training\paddleocr\train_gpu.ps1
 ```
 
-Evaluate KIE checkpoint:
+Evaluate the current checkpoint:
 
 ```powershell
 .\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
 ```
 
-Prepare OCR recognition data:
+### 4. Prepare OCR Recognition Dataset
 
 ```powershell
 python scripts\datasets\export_mcocr_text_recognition_dataset.py --clear --copy-mode hardlink
 python scripts\datasets\validate_paddleocr_rec_dataset.py --dataset-dir archive\prepared\mcocr2021_text_recognition_paddleocr
 ```
 
-Download OCR pretrained weights:
+### 5. Fine-Tune PaddleOCR Recognition
+
+Download official pretrained recognition weights:
 
 ```powershell
 .\scripts\training\paddleocr\download_rec_pretrained.ps1
 ```
 
-Fine-tune OCR recognition:
+Run OCR recognition training:
 
 ```powershell
 .\scripts\training\paddleocr\recognition_train_gpu.ps1
 ```
 
-Evaluate OCR recognition:
-
-```powershell
-.\scripts\training\paddleocr\recognition_eval.ps1 -UseGpu
-```
-
-Smoke train OCR recognition:
+Run a one-epoch smoke training job:
 
 ```powershell
 .\scripts\training\paddleocr\recognition_train_gpu.ps1 -RunName rec_smoke_1epoch -EpochNum 1 -BatchSize 8
 ```
 
-## 11. Runtime Patch Cho PaddleOCR
+Evaluate recognition:
 
-`external/PaddleOCR/` bị ignore, nên một số sửa runtime cần được apply lại sau khi clone/cài mới.
+```powershell
+.\scripts\training\paddleocr\recognition_eval.ps1 -UseGpu
+```
+
+### 6. Apply PaddleOCR Runtime Patches
+
+`external/PaddleOCR/` is not committed to Git. After refreshing or recloning PaddleOCR, apply the local runtime patches required by this project:
 
 ```powershell
 .\scripts\training\paddleocr\apply_runtime_patches.ps1
 ```
 
-Script này đảm bảo KIE inference có thể:
+The patches support the local inference path used by the web scanner and compatibility with exported Paddle 3 model metadata.
 
-- Nhận OCR config động từ backend.
-- Dùng `inference.json` khi export model bằng Paddle 3.
-- Xử lý output recognition head tương thích với custom character dictionary.
+## Evaluation And Metrics
 
-Backend cũng ép `HOME` và `USERPROFILE` của subprocess PaddleOCR về thư mục `.cache` trong repo, nên các official OCR inference models tải lần đầu sẽ nằm dưới:
+### KIE/SER Metrics
+
+The current kept LayoutXLM/SER checkpoint is the 10-epoch GPU run:
 
 ```text
-.cache/.paddleocr/
+archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/output/ser_vi_layoutxlm_finrecon_4field/best_accuracy
 ```
 
-thay vì `C:\Users\<user>\.paddleocr`.
+Tracked metrics:
 
-## 12. Kiểm Tra Nhanh
+| Split | Precision | Recall | F1 / Hmean |
+| --- | ---: | ---: | ---: |
+| Validation | 0.9472259811 | 0.9549795362 | 0.9510869565 |
+| Test | 0.9069462647 | 0.9153439153 | 0.9111257406 |
 
-Backend:
+Interpretation:
+
+- The 10-epoch SER checkpoint is the best currently kept KIE model.
+- Later continuation attempts did not improve validation F1 and were removed.
+- Further KIE training should be driven by clear failure analysis or dataset/label policy changes.
+
+### OCR Recognition Metrics
+
+Current integrated OCR recognition checkpoint:
+
+```text
+archive/models/paddleocr/mcocr2021_rec_svtr_lcnet_best_inference
+```
+
+Source checkpoint:
+
+```text
+archive/prepared/mcocr2021_text_recognition_paddleocr/output/rec_svtr_lcnet_mcocr2021/best_accuracy
+```
+
+Current status:
+
+| Metric | Value |
+| --- | ---: |
+| Best epoch | 20 |
+| Accuracy | 0.4382812466 |
+| Normalized edit distance | 0.8654821225 |
+
+Interpretation:
+
+- This OCR checkpoint is an experimental model, not a production-grade recognizer.
+- It may improve some receipt patterns but can still lose Vietnamese accents or confuse similar characters.
+- OCR errors such as `I/l/1`, `O/0`, `S/5`, and missing diacritics are recognition problems, not KIE classification problems.
+
+## Model Artifacts
+
+Large model and dataset artifacts are intentionally not committed.
+
+Important local paths:
+
+```text
+archive/source_mcocr/
+archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/
+archive/prepared/mcocr2021_text_recognition_paddleocr/
+archive/models/paddleocr/mcocr2021_rec_svtr_lcnet_best_inference/
+external/PaddleOCR/
+.cache/
+```
+
+If the web UI says a model option is unavailable, check:
+
+1. Whether the artifact folder exists.
+2. Whether the path in `backend/app/services/kie_model.py` points to the correct model.
+3. Whether `external/PaddleOCR` has been restored and patched.
+4. Whether the PaddleOCR environment exists.
+
+## Git And Artifact Policy
+
+The repository is kept lightweight for GitHub.
+
+Ignored by default:
+
+```text
+.venv/
+.venvs/
+.cache/
+backend/data/
+frontend/node_modules/
+frontend/dist/
+external/PaddleOCR/
+archive/source_mcocr/
+archive/prepared/
+archive/models/
+```
+
+Do commit:
+
+- Application source code.
+- Dataset/training scripts.
+- Lightweight documentation.
+- Configuration templates.
+- Small metadata reports when useful.
+
+Do not commit:
+
+- Raw datasets.
+- Generated image/PDF/CSV samples.
+- PaddleOCR checkpoints.
+- Exported inference models.
+- Training caches.
+- Temporary backend uploads.
+
+## Development Checks
+
+Backend syntax check:
 
 ```powershell
-python -m compileall backend\app
+cd backend
+npm run test
 ```
 
-Frontend:
+Frontend production build:
 
 ```powershell
 cd frontend
@@ -394,32 +585,34 @@ $env:PYTHONUTF8='1'
 backend\.venv\Scripts\python.exe -c "from fastapi.testclient import TestClient; from app.main import app; r=TestClient(app).get('/api/model-options'); print(r.status_code, r.json()['default_ocr_engine'])"
 ```
 
-## 13. Giới Hạn Hiện Tại
+## Known Limitations
 
-- OCR fine-tuned checkpoint chưa đủ mạnh để xem là production OCR.
-- Chưa có benchmark tự động so sánh từng pipeline OCR/KIE trên cùng tập ảnh thật.
-- Chưa có annotation review UI để sửa ground truth trực tiếp.
-- Chưa có export error report theo field.
-- Chưa đóng gói model artifacts nhẹ để chạy portable sau khi clone repo.
+- The OCR fine-tuned recognizer is still experimental.
+- Vietnamese diacritics remain a difficult OCR recognition issue.
+- There is no annotation correction UI yet.
+- There is no automatic field-level benchmark page inside the web app yet.
+- Model artifacts are local and must be restored separately after cloning.
+- The app currently targets receipt image extraction only, not full invoice approval or bank reconciliation.
 
-## 14. Roadmap Đề Xuất
+## Roadmap
 
-Ưu tiên tiếp theo:
+Recommended next steps:
 
-1. Tạo evaluation set ảnh hóa đơn thật ngoài train set.
-2. Chạy benchmark 3 OCR options x 2 KIE options.
-3. Track CER/WER cho OCR recognition và F1 theo field cho KIE.
-4. Train tiếp OCR recognition với augmentation cho ảnh mờ, JPEG noise, low-resolution.
-5. Thêm error analysis page: false positive, false negative, OCR confusion, SER confusion.
-6. Sau khi extraction ổn định, mới mở rộng lại workflow doanh nghiệp như payable review hoặc reconciliation.
+1. Build a small held-out real-world receipt evaluation set.
+2. Benchmark all OCR/KIE combinations on the same images.
+3. Track OCR CER/WER and KIE field-level F1 separately.
+4. Continue OCR recognition fine-tuning with augmentation for blur, compression, low contrast, and thermal receipt noise.
+5. Add a model error analysis UI: false positives, false negatives, OCR confusion, and SER confusion.
+6. Add annotation review for correcting ground truth.
+7. Package model artifacts more cleanly for reproducible local setup.
+8. After extraction quality is stable, build higher-level finance workflows such as purchase review, payable audit, or reconciliation.
 
-## 15. Định Nghĩa Thuật Ngữ
+## Naming
 
-- OCR: Optical Character Recognition, gồm text detection và text recognition.
-- Text detection: phát hiện bounding boxes chứa chữ.
-- Text recognition: đọc nội dung chữ từ từng vùng ảnh.
-- KIE: Key Information Extraction, trích xuất thông tin có ý nghĩa nghiệp vụ.
-- SER: Sequence Entity Recognition, bài toán gán nhãn token trong document.
-- Baseline: cấu hình tham chiếu để so sánh.
-- Pretrained: model đã học trước trên tập dữ liệu lớn.
-- Fine-tuned: model pretrained được train tiếp trên dataset mục tiêu.
+Recommended repository name:
+
+```text
+finrecon-receipt-extraction
+```
+
+The name is intentionally shorter and more accurate than the original invoice automation title because the active project is now focused on receipt OCR and field extraction.
