@@ -30,24 +30,11 @@ DEFAULT_CHECKPOINT_DIR = (
     / "ser_vi_layoutxlm_finrecon_4field"
     / "best_accuracy"
 )
-DEFAULT_REC_MODEL_DIR = (
-    REPO_ROOT
-    / "archive"
-    / "models"
-    / "paddleocr"
-    / "mcocr2021_rec_svtr_lcnet_best_inference"
-)
-DEFAULT_REC_CHAR_DICT = (
-    REPO_ROOT
-    / "archive"
-    / "prepared"
-    / "mcocr2021_text_recognition_paddleocr"
-    / "dict"
-    / "mcocr2021_vi_receipt_dict.txt"
-)
 DEFAULT_PADDLE_PYTHON = REPO_ROOT / ".venvs" / "paddleocr-gpu" / "Scripts" / "python.exe"
+DEFAULT_VIETOCR_PYTHON = REPO_ROOT / ".venvs" / "vietocr" / "Scripts" / "python.exe"
 DEFAULT_WORK_DIR = BACKEND_DIR / "data" / "kie_inference"
 INFER_SCRIPT = PADDLEOCR_ROOT / "tools" / "infer_kie_token_ser.py"
+VIETOCR_SCRIPT = REPO_ROOT / "scripts" / "inference" / "vietocr_recognize.py"
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 FIELD_LABELS = {"SELLER", "ADDRESS", "TIMESTAMP", "TOTAL_COST"}
 
@@ -58,13 +45,11 @@ OCR_ENGINE_PROFILES: dict[str, dict[str, Any]] = {
     "paddleocr_original": {
         "label": "PaddleOCR package default",
         "description": "PaddleOCR default configuration. This is only a package baseline.",
-        "requires_trained_recognizer": False,
         "overrides": {},
     },
     "paddleocr_pretrained": {
         "label": "PP-OCRv4 Chinese pretrained",
         "description": "Official PP-OCRv4 pretrained OCR with lang=ch. Useful baseline, weak for Vietnamese diacritics.",
-        "requires_trained_recognizer": False,
         "overrides": {
             "Global.ocr_version": "PP-OCRv4",
             "Global.ocr_lang": "ch",
@@ -73,21 +58,21 @@ OCR_ENGINE_PROFILES: dict[str, dict[str, Any]] = {
     "paddleocr_vi_pretrained": {
         "label": "PP-OCRv4 Vietnamese/Latin pretrained",
         "description": "Official PaddleOCR pretrained OCR with lang=vi, mapped to the Latin recognizer for Vietnamese diacritics.",
-        "requires_trained_recognizer": False,
         "overrides": {
             "Global.ocr_version": "PP-OCRv4",
             "Global.ocr_lang": "vi",
         },
     },
-    "paddleocr_trained": {
-        "label": "MC-OCR fine-tuned recognizer",
-        "description": "Project OCR recognizer fine-tuned from MC-OCR 2021 and exported to inference format.",
-        "requires_trained_recognizer": True,
+    "paddleocr_vietocr": {
+        "label": "PaddleOCR detection + VietOCR recognition",
+        "description": "Use PaddleOCR for text detection, then VietOCR for Vietnamese text recognition before LayoutXLM-SER.",
+        "requires_vietocr": True,
         "overrides": {
-            "Global.rec_algorithm": "SVTR_LCNet",
-            "Global.rec_image_shape": "3,48,640",
-            "Global.max_text_length": "160",
-            "Global.use_space_char": "True",
+            "Global.ocr_version": "PP-OCRv4",
+            "Global.ocr_lang": "vi",
+            "Global.ocr_recognizer": "vietocr",
+            "Global.vietocr_config": "vgg_transformer",
+            "Global.vietocr_device": "cpu",
         },
     },
 }
@@ -119,14 +104,50 @@ def _path_from_env(name: str, default: Path) -> Path:
     return Path(os.getenv(name, str(default))).resolve()
 
 
-def _runtime_paths() -> tuple[Path, Path, Path, Path, Path]:
+def _runtime_paths() -> tuple[Path, Path, Path]:
     return (
         _path_from_env("PADDLEOCR_PYTHON", DEFAULT_PADDLE_PYTHON),
         _path_from_env("PADDLEOCR_SER_CONFIG", DEFAULT_CONFIG_PATH),
         _path_from_env("PADDLEOCR_SER_CHECKPOINT", DEFAULT_CHECKPOINT_DIR),
-        _path_from_env("PADDLEOCR_REC_MODEL_DIR", DEFAULT_REC_MODEL_DIR),
-        _path_from_env("PADDLEOCR_REC_CHAR_DICT", DEFAULT_REC_CHAR_DICT),
     )
+
+
+def _vietocr_runtime_paths() -> tuple[Path, Path]:
+    return (
+        _path_from_env("VIETOCR_PYTHON", DEFAULT_VIETOCR_PYTHON),
+        _path_from_env("VIETOCR_SCRIPT", VIETOCR_SCRIPT),
+    )
+
+
+def _python_can_import(python_path: Path, module_name: str) -> tuple[bool, str | None]:
+    if not python_path.exists():
+        return False, f"Python runtime not found: {python_path}"
+    completed = subprocess.run(
+        [str(python_path), "-c", f"import {module_name}"],
+        env=_runtime_env(),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+    if completed.returncode == 0:
+        return True, None
+    log_text = "\n".join(part for part in (completed.stdout, completed.stderr) if part).strip()
+    detail = log_text.splitlines()[-1] if log_text else f"could not import {module_name}"
+    return False, detail
+
+
+def _missing_vietocr_runtime() -> list[str]:
+    vietocr_python, vietocr_script = _vietocr_runtime_paths()
+    missing = [str(path) for path in (vietocr_python, vietocr_script) if not path.exists()]
+    if missing:
+        return missing
+    for module_name in ("torch", "vietocr"):
+        available, reason = _python_can_import(vietocr_python, module_name)
+        if not available:
+            missing.append(f"{module_name} ({reason})")
+    return missing
 
 
 def _validate_choice(value: str | None, choices: dict[str, dict[str, Any]], default: str, kind: str) -> str:
@@ -137,8 +158,8 @@ def _validate_choice(value: str | None, choices: dict[str, dict[str, Any]], defa
     return key
 
 
-def _validate_runtime(ocr_engine: str, kie_engine: str) -> tuple[Path, Path, Path | None, Path | None, Path | None]:
-    python_path, config_path, checkpoint_dir, rec_model_dir, rec_char_dict = _runtime_paths()
+def _validate_runtime(ocr_engine: str, kie_engine: str) -> tuple[Path, Path, Path | None]:
+    python_path, config_path, checkpoint_dir = _runtime_paths()
     missing = [
         str(path)
         for path in (python_path, config_path, INFER_SCRIPT, PADDLEOCR_ROOT)
@@ -146,18 +167,14 @@ def _validate_runtime(ocr_engine: str, kie_engine: str) -> tuple[Path, Path, Pat
     ]
     if KIE_ENGINE_PROFILES[kie_engine]["requires_trained_checkpoint"] and not checkpoint_dir.exists():
         missing.append(str(checkpoint_dir))
-    if OCR_ENGINE_PROFILES[ocr_engine]["requires_trained_recognizer"]:
-        for path in (rec_model_dir, rec_char_dict):
-            if not path.exists():
-                missing.append(str(path))
+    if OCR_ENGINE_PROFILES[ocr_engine].get("requires_vietocr"):
+        missing.extend(_missing_vietocr_runtime())
     if missing:
         raise KieModelError("Missing PaddleOCR runtime/model: " + "; ".join(missing))
     return (
         python_path,
         config_path,
         checkpoint_dir if KIE_ENGINE_PROFILES[kie_engine]["requires_trained_checkpoint"] else None,
-        rec_model_dir if OCR_ENGINE_PROFILES[ocr_engine]["requires_trained_recognizer"] else None,
-        rec_char_dict if OCR_ENGINE_PROFILES[ocr_engine]["requires_trained_recognizer"] else None,
     )
 
 
@@ -172,14 +189,14 @@ def _option_payload(key: str, profile: dict[str, Any], available: bool, reason: 
 
 
 def get_model_runtime_options() -> dict[str, Any]:
-    python_path, config_path, checkpoint_dir, rec_model_dir, rec_char_dict = _runtime_paths()
+    python_path, config_path, checkpoint_dir = _runtime_paths()
     base_missing = [path for path in (python_path, config_path, INFER_SCRIPT, PADDLEOCR_ROOT) if not path.exists()]
 
     ocr_options = []
     for key, profile in OCR_ENGINE_PROFILES.items():
         missing = list(base_missing)
-        if profile["requires_trained_recognizer"]:
-            missing.extend(path for path in (rec_model_dir, rec_char_dict) if not path.exists())
+        if profile.get("requires_vietocr") and not base_missing:
+            missing.extend(_missing_vietocr_runtime())
         reason = "Missing: " + "; ".join(str(path) for path in missing) if missing else None
         ocr_options.append(_option_payload(key, profile, not missing, reason))
 
@@ -213,6 +230,7 @@ def _runtime_env() -> dict[str, str]:
             "PPNLP_HOME": str(cache_dir / "paddlenlp"),
             "PADDLE_HOME": str(cache_dir / "paddle"),
             "HF_HOME": str(cache_dir / "huggingface"),
+            "TORCH_HOME": str(cache_dir / "torch"),
             "XDG_CACHE_HOME": str(cache_dir),
             "PIP_CACHE_DIR": str(cache_dir / "pip"),
             "HOME": str(cache_dir),
@@ -234,7 +252,7 @@ def _run_inference(
 ) -> tuple[list[dict[str, Any]], str]:
     ocr_engine = _validate_choice(ocr_engine, OCR_ENGINE_PROFILES, DEFAULT_OCR_ENGINE, "OCR engine")
     kie_engine = _validate_choice(kie_engine, KIE_ENGINE_PROFILES, DEFAULT_KIE_ENGINE, "KIE engine")
-    python_path, config_path, checkpoint_dir, rec_model_dir, rec_char_dict = _validate_runtime(ocr_engine, kie_engine)
+    python_path, config_path, checkpoint_dir = _validate_runtime(ocr_engine, kie_engine)
 
     work_dir = _path_from_env("PADDLEOCR_KIE_WORK_DIR", DEFAULT_WORK_DIR)
     output_dir = work_dir / uuid.uuid4().hex
@@ -257,14 +275,14 @@ def _run_inference(
 
     for name, value in OCR_ENGINE_PROFILES[ocr_engine].get("overrides", {}).items():
         args.append(f"{name}={value}")
-    if rec_model_dir and rec_char_dict:
+    if OCR_ENGINE_PROFILES[ocr_engine].get("requires_vietocr"):
+        vietocr_python, vietocr_script = _vietocr_runtime_paths()
         args.extend(
             [
-                f"Global.kie_rec_model_dir={rec_model_dir}",
-                f"Global.rec_char_dict_path={rec_char_dict}",
+                f"Global.vietocr_python={vietocr_python}",
+                f"Global.vietocr_script={vietocr_script}",
             ]
         )
-
     completed = subprocess.run(
         args,
         cwd=str(PADDLEOCR_ROOT),

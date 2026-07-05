@@ -80,14 +80,12 @@ scripts/training/paddleocr/gpu_check.ps1
 scripts/training/paddleocr/train_gpu.ps1
 scripts/training/paddleocr/eval_ser.ps1
 scripts/training/paddleocr/track_metrics.py
+scripts/training/paddleocr/apply_runtime_patches.ps1
 scripts/datasets/prepare_receipt_4field_dataset.py
 scripts/datasets/clean_receipt_4field_dataset.py
 scripts/datasets/export_paddleocr_ser_dataset.py
 scripts/datasets/validate_paddleocr_ser_dataset.py
-scripts/datasets/export_mcocr_text_recognition_dataset.py
-scripts/datasets/validate_paddleocr_rec_dataset.py
-scripts/training/paddleocr/recognition_train_gpu.ps1
-scripts/training/paddleocr/recognition_eval.ps1
+scripts/inference/vietocr_recognize.py
 ```
 
 ## Model State
@@ -141,30 +139,16 @@ Current web OCR choices:
 paddleocr_original      - PaddleOCR package default OCR.
 paddleocr_pretrained    - Official PP-OCRv4 Chinese pretrained OCR, lang=ch.
 paddleocr_vi_pretrained - Official PaddleOCR Vietnamese/Latin pretrained OCR, lang=vi.
-paddleocr_trained       - Exported MC-OCR fine-tuned recognizer below.
+paddleocr_vietocr       - PaddleOCR detection + VietOCR recognition.
 ```
 
-Current trained web OCR recognition layer:
+Current OCR training direction:
 
 ```text
-archive/models/paddleocr/mcocr2021_rec_svtr_lcnet_best_inference
+PaddleOCR detection fine-tuning for bbox coverage.
+VietOCR recognition fine-tuning for Vietnamese text quality.
 ```
 
-It was exported from the interrupted recognition training run:
-
-```text
-archive/prepared/mcocr2021_text_recognition_paddleocr/output/rec_svtr_lcnet_mcocr2021/best_accuracy
-```
-
-Best known OCR recognition metric from that run:
-
-```text
-best_epoch: 20
-acc: 0.4382812466
-norm_edit_dis: 0.8654821225
-```
-
-This checkpoint is integrated into web scanning for honest testing, but it is not yet a strong production OCR recognizer. In full receipt tests it can produce noisy text, so improving OCR recognition remains the next model priority.
 
 Current web KIE choices:
 
@@ -179,39 +163,10 @@ If the app misreads characters such as `I/l/1`, `O/0`, or `S/5`, that is mostly 
 
 Likely next model work:
 
-1. Fine-tune PaddleOCR text recognition on MC-OCR text crops.
-2. Add blur/noise/JPEG/low-resolution augmentation.
-3. Track OCR `CER`/`WER` before and after.
+1. Prepare PaddleOCR detection fine-tuning from MC-OCR polygons.
+2. Prepare VietOCR recognition fine-tuning from text-line crops.
+3. Track OCR CER/WER/exact-match separately from KIE F1.
 4. Keep the current LayoutXLM checkpoint unless a new validation/test run beats it.
-
-OCR recognition fine-tune source has been prepared at:
-
-```text
-archive/prepared/mcocr2021_text_recognition_paddleocr
-```
-
-It contains:
-
-```text
-train.txt: 5285 rows
-val.txt:   1300 rows
-dict/mcocr2021_vi_receipt_dict.txt: 180 characters
-rec_svtr_lcnet_mcocr2021.yml
-```
-
-Train/eval commands:
-
-```powershell
-.\scripts\training\paddleocr\download_rec_pretrained.ps1
-.\scripts\training\paddleocr\recognition_train_gpu.ps1
-.\scripts\training\paddleocr\recognition_eval.ps1 -UseGpu
-```
-
-Smoke train before a full run:
-
-```powershell
-.\scripts\training\paddleocr\recognition_train_gpu.ps1 -RunName rec_smoke_1epoch -EpochNum 1 -BatchSize 8
-```
 
 ## Dataset
 

@@ -160,7 +160,7 @@ Pipeline inference gồm 2 lựa chọn độc lập: OCR engine và KIE/SER eng
 | PaddleOCR package default | `paddleocr_original` | Baseline theo cấu hình mặc định của package PaddleOCR |
 | PP-OCRv4 Chinese pretrained | `paddleocr_pretrained` | Official pretrained `lang=ch`; dùng để so sánh, không tối ưu cho tiếng Việt có dấu |
 | PP-OCRv4 Vietnamese/Latin pretrained | `paddleocr_vi_pretrained` | Official OCR hướng Latin/Vietnamese; phù hợp hơn cho tiếng Việt |
-| MC-OCR fine-tuned recognizer | `paddleocr_trained` | OCR recognizer đã fine-tune từ MC-OCR 2021 |
+| PaddleOCR detection + VietOCR recognition | `paddleocr_vietocr` | PaddleOCR detect bbox, VietOCR đọc text crop trong env riêng `.venvs/vietocr` |
 
 ### KIE/SER engines
 
@@ -226,6 +226,7 @@ Chính sách dữ liệu:
 |-- scripts/
 |   |-- datasets/              # build/export/validate dataset
 |   |-- evaluation/            # offline evaluation helpers
+|   |-- inference/             # runtime bridge scripts, e.g. VietOCR recognition
 |   `-- training/
 |       `-- paddleocr/         # train/eval/GPU/metrics scripts
 |-- archive/
@@ -345,10 +346,10 @@ PaddleOCR/LayoutXLM được tách khỏi môi trường backend.
 | Mục đích | Path |
 | --- | --- |
 | PaddleOCR GPU env | `.venvs/paddleocr-gpu` |
+| VietOCR env | `.venvs/vietocr` |
 | PaddleOCR source | `external/PaddleOCR` |
 | Project cache | `.cache/` |
 | KIE/SER export | `archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser` |
-| OCR recognition export | `archive/prepared/mcocr2021_text_recognition_paddleocr` |
 
 Tất cả script train nên load:
 
@@ -394,40 +395,16 @@ Evaluate checkpoint:
 .\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
 ```
 
-### 4. Chuẩn bị dataset OCR recognition
+### 4. Huong OCR tiep theo
 
-```powershell
-python scripts\datasets\export_mcocr_text_recognition_dataset.py --clear --copy-mode hardlink
-python scripts\datasets\validate_paddleocr_rec_dataset.py --dataset-dir archive\prepared\mcocr2021_text_recognition_paddleocr
-```
+Pipeline OCR moi duoc tach thanh hai bai toan rieng:
 
-### 5. Fine-tune PaddleOCR recognition
+- PaddleOCR detection fine-tuning: cai thien viec tim bbox/text line tren hoa don ban le Viet Nam.
+- VietOCR recognition fine-tuning: cai thien viec doc tieng Viet co dau tren tung crop da detect.
 
-Download pretrained weights:
+Cac script va artifact PaddleOCR text-recognition cu da duoc go bo de tranh nham voi huong detection + VietOCR.
 
-```powershell
-.\scripts\training\paddleocr\download_rec_pretrained.ps1
-```
-
-Train OCR recognition:
-
-```powershell
-.\scripts\training\paddleocr\recognition_train_gpu.ps1
-```
-
-Smoke train 1 epoch:
-
-```powershell
-.\scripts\training\paddleocr\recognition_train_gpu.ps1 -RunName rec_smoke_1epoch -EpochNum 1 -BatchSize 8
-```
-
-Evaluate OCR recognition:
-
-```powershell
-.\scripts\training\paddleocr\recognition_eval.ps1 -UseGpu
-```
-
-### 6. Apply runtime patches
+### 5. Apply runtime patches
 
 `external/PaddleOCR/` không được commit. Sau khi clone/cài lại PaddleOCR, chạy:
 
@@ -456,31 +433,9 @@ Kết luận:
 - Các lần continuation sau đó không cải thiện validation F1 nên đã được loại bỏ.
 - Chỉ nên retrain KIE khi có thay đổi dataset, label policy hoặc failure pattern rõ ràng.
 
-### OCR recognition
+### OCR direction
 
-Model OCR recognition đang tích hợp:
-
-```text
-archive/models/paddleocr/mcocr2021_rec_svtr_lcnet_best_inference
-```
-
-Checkpoint nguồn:
-
-```text
-archive/prepared/mcocr2021_text_recognition_paddleocr/output/rec_svtr_lcnet_mcocr2021/best_accuracy
-```
-
-| Metric | Value |
-| --- | ---: |
-| Best epoch | 20 |
-| Accuracy | 0.4382812466 |
-| Normalized edit distance | 0.8654821225 |
-
-Kết luận:
-
-- OCR checkpoint hiện vẫn là model thử nghiệm.
-- Model có thể cải thiện một số pattern nhưng chưa phải production-grade OCR.
-- Các lỗi mất dấu, nhầm `I/l/1`, `O/0`, `S/5` chủ yếu thuộc OCR recognition, không phải KIE.
+The previous integrated PaddleOCR text-recognition experiment was removed. OCR work now targets PaddleOCR detection plus VietOCR recognition, tracked as separate experiments with separate metrics.
 
 ## Chính sách quản lý artifact
 
@@ -660,7 +615,7 @@ The inference pipeline has two independent choices: OCR engine and KIE/SER engin
 | PaddleOCR package default | `paddleocr_original` | Package-level PaddleOCR baseline |
 | PP-OCRv4 Chinese pretrained | `paddleocr_pretrained` | Official `lang=ch` pretrained baseline; useful for comparison but weak for Vietnamese diacritics |
 | PP-OCRv4 Vietnamese/Latin pretrained | `paddleocr_vi_pretrained` | Official Vietnamese/Latin-oriented OCR option |
-| MC-OCR fine-tuned recognizer | `paddleocr_trained` | Project OCR recognizer fine-tuned from MC-OCR 2021 |
+| PaddleOCR detection + VietOCR recognition | `paddleocr_vietocr` | PaddleOCR detects text boxes, while VietOCR recognizes crop text in the isolated `.venvs/vietocr` environment |
 
 ### KIE/SER engines
 
@@ -726,6 +681,7 @@ This matters because context lines such as `Tổng cộng`, `Thanh toán`, `Ngà
 |-- scripts/
 |   |-- datasets/              # dataset build/export/validation scripts
 |   |-- evaluation/            # offline evaluation helpers
+|   |-- inference/             # runtime bridge scripts, e.g. VietOCR recognition
 |   `-- training/
 |       `-- paddleocr/         # train/eval/GPU/metrics scripts
 |-- archive/
@@ -845,10 +801,10 @@ PaddleOCR/LayoutXLM training is separated from the backend environment.
 | Purpose | Path |
 | --- | --- |
 | PaddleOCR GPU environment | `.venvs/paddleocr-gpu` |
+| VietOCR environment | `.venvs/vietocr` |
 | PaddleOCR source | `external/PaddleOCR` |
 | Project cache | `.cache/` |
 | KIE/SER export | `archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser` |
-| OCR recognition export | `archive/prepared/mcocr2021_text_recognition_paddleocr` |
 
 All training scripts should load:
 
@@ -894,40 +850,16 @@ Evaluate checkpoint:
 .\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
 ```
 
-### 4. Prepare OCR recognition dataset
+### 4. Next OCR direction
 
-```powershell
-python scripts\datasets\export_mcocr_text_recognition_dataset.py --clear --copy-mode hardlink
-python scripts\datasets\validate_paddleocr_rec_dataset.py --dataset-dir archive\prepared\mcocr2021_text_recognition_paddleocr
-```
+The OCR pipeline is now split into two separate training targets:
 
-### 5. Fine-tune PaddleOCR recognition
+- PaddleOCR detection fine-tuning: improve text box/text line detection on Vietnamese retail receipts.
+- VietOCR recognition fine-tuning: improve Vietnamese text transcription on detected crops.
 
-Download pretrained weights:
+The previous PaddleOCR text-recognition scripts and artifacts were removed to avoid mixing that experiment with the new detection + VietOCR direction.
 
-```powershell
-.\scripts\training\paddleocr\download_rec_pretrained.ps1
-```
-
-Train OCR recognition:
-
-```powershell
-.\scripts\training\paddleocr\recognition_train_gpu.ps1
-```
-
-Smoke train for one epoch:
-
-```powershell
-.\scripts\training\paddleocr\recognition_train_gpu.ps1 -RunName rec_smoke_1epoch -EpochNum 1 -BatchSize 8
-```
-
-Evaluate OCR recognition:
-
-```powershell
-.\scripts\training\paddleocr\recognition_eval.ps1 -UseGpu
-```
-
-### 6. Apply runtime patches
+### 5. Apply runtime patches
 
 `external/PaddleOCR/` is not committed. After restoring or refreshing PaddleOCR, run:
 
@@ -956,31 +888,9 @@ Interpretation:
 - Later continuation attempts did not improve validation F1 and were removed.
 - Further KIE training should be driven by clear dataset, label policy, or failure pattern changes.
 
-### OCR recognition
+### OCR direction
 
-Integrated OCR recognition model:
-
-```text
-archive/models/paddleocr/mcocr2021_rec_svtr_lcnet_best_inference
-```
-
-Source checkpoint:
-
-```text
-archive/prepared/mcocr2021_text_recognition_paddleocr/output/rec_svtr_lcnet_mcocr2021/best_accuracy
-```
-
-| Metric | Value |
-| --- | ---: |
-| Best epoch | 20 |
-| Accuracy | 0.4382812466 |
-| Normalized edit distance | 0.8654821225 |
-
-Interpretation:
-
-- The OCR checkpoint is still experimental.
-- It may improve some patterns but is not a production-grade recognizer.
-- Missing diacritics and confusion between `I/l/1`, `O/0`, or `S/5` are mainly OCR recognition issues, not KIE issues.
+The previous integrated PaddleOCR text-recognition experiment was removed. OCR work now targets PaddleOCR detection plus VietOCR recognition, tracked as separate experiments with separate metrics.
 
 ## Artifact Policy
 

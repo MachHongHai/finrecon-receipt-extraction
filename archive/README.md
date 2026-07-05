@@ -23,7 +23,6 @@ archive/
   README.md
   source_mcocr/                         # raw MC-OCR dataset, read-only, ignored
   prepared/
-    mcocr2021_text_recognition_paddleocr/ # PaddleOCR OCR recognition export, ignored
     finrecon_receipt_4field/            # generated prepared dataset, ignored
     finrecon_receipt_4field_clean/      # generated clean dataset, ignored
       paddleocr_ser/                    # PaddleOCR LayoutXLM/SER export, ignored
@@ -47,12 +46,6 @@ The active KIE/SER dataset is:
 
 ```text
 archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser
-```
-
-The active OCR recognition fine-tune dataset is:
-
-```text
-archive/prepared/mcocr2021_text_recognition_paddleocr
 ```
 
 Labels:
@@ -88,12 +81,10 @@ python scripts\datasets\export_paddleocr_ser_dataset.py --dataset-dir archive\pr
 python scripts\datasets\validate_paddleocr_ser_dataset.py --dataset-dir archive\prepared\finrecon_receipt_4field_clean\paddleocr_ser
 ```
 
-Recreate OCR recognition training data from MC-OCR text crops:
+Future OCR data preparation should be split into:
 
-```powershell
-python scripts\datasets\export_mcocr_text_recognition_dataset.py --clear --copy-mode hardlink
-python scripts\datasets\validate_paddleocr_rec_dataset.py --dataset-dir archive\prepared\mcocr2021_text_recognition_paddleocr
-```
+- PaddleOCR detection fine-tuning data from receipt images and polygons.
+- VietOCR recognition fine-tuning data from cropped text-line images and transcripts.
 
 ## Train/Eval
 
@@ -101,9 +92,6 @@ python scripts\datasets\validate_paddleocr_rec_dataset.py --dataset-dir archive\
 .\scripts\training\paddleocr\gpu_check.ps1
 .\scripts\training\paddleocr\train_gpu.ps1
 .\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
-.\scripts\training\paddleocr\download_rec_pretrained.ps1
-.\scripts\training\paddleocr\recognition_train_gpu.ps1
-.\scripts\training\paddleocr\recognition_eval.ps1 -UseGpu
 ```
 
 ## Sharing Dataset Or Model

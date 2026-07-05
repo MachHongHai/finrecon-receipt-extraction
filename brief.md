@@ -163,33 +163,19 @@ Better next training work:
 
 1. Collect real receipt failures from the web app.
 2. Categorize errors into OCR text errors vs field-label errors.
-3. If OCR text is wrong, fine-tune PaddleOCR text recognition.
-4. If field labels are wrong, improve KIE labels/data split and retrain LayoutXLM.
-5. Track metrics separately:
-   - OCR: CER/WER
+3. If PaddleOCR misses text boxes, fine-tune PaddleOCR detection.
+4. If recognized Vietnamese text is wrong, fine-tune VietOCR recognition on text-line crops.
+5. If field labels are wrong, improve KIE labels/data split and retrain LayoutXLM.
+6. Track metrics separately:
+   - Detection: bbox recall/precision or hmean
+   - Recognition: CER/WER/exact match
    - KIE/SER: precision/recall/F1
 
-OCR recognition fine-tune setup is prepared from MC-OCR 2021:
+The old PaddleOCR text-recognition experiment has been removed. The next OCR setup should be built as two separate experiments from MC-OCR 2021:
 
 ```text
-archive/prepared/mcocr2021_text_recognition_paddleocr
-```
-
-It uses the MC-OCR text crop labels:
-
-```text
-train: 5285 rows
-val:   1300 rows
-dictionary: 180 characters
-config: rec_svtr_lcnet_mcocr2021.yml
-```
-
-Train/eval:
-
-```powershell
-.\scripts\training\paddleocr\download_rec_pretrained.ps1
-.\scripts\training\paddleocr\recognition_train_gpu.ps1
-.\scripts\training\paddleocr\recognition_eval.ps1 -UseGpu
+PaddleOCR detection fine-tuning: images + text polygons.
+VietOCR recognition fine-tuning: cropped text-line images + transcripts.
 ```
 
 ## 11. Run Commands

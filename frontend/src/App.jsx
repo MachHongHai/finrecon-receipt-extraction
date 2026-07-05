@@ -47,9 +47,9 @@ const FALLBACK_OPTIONS = {
       available: true,
     },
     {
-      value: "paddleocr_trained",
-      label: "MC-OCR fine-tuned recognizer",
-      description: "Project OCR recognizer fine-tuned from MC-OCR 2021.",
+      value: "paddleocr_vietocr",
+      label: "PaddleOCR detection + VietOCR recognition",
+      description: "PaddleOCR detects text boxes, then VietOCR recognizes Vietnamese text in each crop.",
       available: true,
     },
   ],

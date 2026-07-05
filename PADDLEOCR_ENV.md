@@ -5,16 +5,14 @@ The PaddleOCR/LayoutXLM environment is separate from the backend and frontend en
 ## Paths
 
 ```text
-Python CPU env:      .venvs/paddleocr
-Python GPU env:      .venvs/paddleocr-gpu
+Paddle/LayoutXLM env:.venvs/paddleocr-gpu
+VietOCR env:         .venvs/vietocr
 PaddleOCR source:    external/PaddleOCR
 Project cache:       .cache/
 SER dataset:         archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser
 SER train config:    archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/ser_vi_layoutxlm_finrecon_4field.yml
 Best checkpoint:     archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/output/ser_vi_layoutxlm_finrecon_4field/best_accuracy
-OCR rec dataset:     archive/prepared/mcocr2021_text_recognition_paddleocr
-OCR rec config:      archive/prepared/mcocr2021_text_recognition_paddleocr/rec_svtr_lcnet_mcocr2021.yml
-Web OCR rec model:   archive/models/paddleocr/mcocr2021_rec_svtr_lcnet_best_inference
+VietOCR bridge:      scripts/inference/vietocr_recognize.py
 ```
 
 ## Cache Policy
@@ -25,12 +23,13 @@ All project scripts load:
 scripts\training\paddleocr\env.ps1
 ```
 
-This keeps Paddle/PaddleNLP/HuggingFace/pip/temp cache inside the project on drive D:
+This keeps Paddle/PaddleNLP/HuggingFace/Torch/pip/temp cache inside the project on drive D:
 
 ```text
 .cache/paddlenlp
 .cache/paddle
 .cache/huggingface
+.cache/torch
 .cache/pip
 .cache/tmp
 ```
@@ -41,6 +40,7 @@ Environment variables set by the script:
 PPNLP_HOME=.cache/paddlenlp
 PADDLE_HOME=.cache/paddle
 HF_HOME=.cache/huggingface
+TORCH_HOME=.cache/torch
 XDG_CACHE_HOME=.cache
 PIP_CACHE_DIR=.cache/pip
 TEMP=.cache/tmp
@@ -51,9 +51,9 @@ PYTHONIOENCODING=utf-8
 
 Do not run PaddleOCR commands manually without these variables unless you intentionally want cache outside the project.
 
-## GPU Environment
+## Paddle/LayoutXLM GPU Environment
 
-Checked environment:
+Checked Paddle/LayoutXLM environment:
 
 ```text
 Python: 3.10.20
@@ -61,6 +61,40 @@ PaddlePaddle GPU: 3.2.2, CUDA 12.6 wheel
 PaddleNLP: 2.6.1.post
 OpenCV: 4.6.0
 NumPy: 1.26.4
+Torch/VietOCR: intentionally not installed here
+```
+
+`paddleocr-gpu` is intentionally kept free of PyTorch/VietOCR to avoid CUDA/cuDNN DLL conflicts. The hybrid OCR option uses PaddleOCR detection in this environment, then calls VietOCR in a separate process through `.venvs/vietocr`.
+
+## VietOCR Environment
+
+VietOCR is isolated in:
+
+```text
+.venvs/vietocr
+```
+
+Expected packages:
+
+```text
+Python: 3.10.20
+Torch: CPU build
+VietOCR: 0.3.13
+```
+
+Check the environment:
+
+```powershell
+.\.venvs\vietocr\Scripts\python.exe -c "import torch, vietocr; print(torch.__version__, torch.cuda.is_available()); print('vietocr ok')"
+.\.venvs\vietocr\Scripts\python.exe -m pip check
+```
+
+The web option `paddleocr_vietocr` uses:
+
+```text
+PaddleOCR process: .venvs/paddleocr-gpu
+VietOCR process:   .venvs/vietocr
+Bridge script:     scripts/inference/vietocr_recognize.py
 ```
 
 Check GPU before training:
@@ -128,99 +162,14 @@ Evaluate current best checkpoint:
 .\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
 ```
 
-## Fine-Tune PaddleOCR Text Recognition
+## OCR Training Direction
 
-This is separate from LayoutXLM/SER. Use this when the web app reads the right field region but OCR confuses characters such as `I/l/1`, `O/0`, `S/5`, accents, or blurry text.
+The old PaddleOCR text-recognition fine-tuning run has been removed. The next OCR work is split by responsibility:
 
-Prepare MC-OCR 2021 recognition crops:
+- PaddleOCR detection fine-tuning uses receipt images and text polygons to improve missing-text-box cases.
+- VietOCR recognition fine-tuning uses cropped text-line images to improve Vietnamese transcription, accents, and character confusions.
 
-```powershell
-python scripts\datasets\export_mcocr_text_recognition_dataset.py --clear --copy-mode hardlink
-python scripts\datasets\validate_paddleocr_rec_dataset.py --dataset-dir archive\prepared\mcocr2021_text_recognition_paddleocr
-```
-
-Current export summary:
-
-```text
-train rows: 5285
-val rows: 1300
-missing images: 0
-dictionary characters: 180
-max text length: 139 observed, 160 configured
-```
-
-Download the default PP-OCRv4 mobile recognition pretrained weights:
-
-```powershell
-.\scripts\training\paddleocr\download_rec_pretrained.ps1
-```
-
-Train recognition model from pretrained weights:
-
-```powershell
-.\scripts\training\paddleocr\recognition_train_gpu.ps1
-```
-
-Smoke train one epoch before a longer run:
-
-```powershell
-.\scripts\training\paddleocr\recognition_train_gpu.ps1 -RunName rec_smoke_1epoch -EpochNum 1 -BatchSize 8
-```
-
-The default pretrained file is:
-
-```text
-archive\models\paddleocr\PP-OCRv4_mobile_rec_pretrained\PP-OCRv4_mobile_rec_pretrained.pdparams
-```
-
-To use a different compatible PaddleOCR recognition checkpoint, pass it explicitly:
-
-```powershell
-.\scripts\training\paddleocr\recognition_train_gpu.ps1 -PretrainedModel "archive\models\paddleocr\your_rec_pretrained\best_accuracy"
-```
-
-Evaluate recognition checkpoint:
-
-```powershell
-.\scripts\training\paddleocr\recognition_eval.ps1 -UseGpu
-```
-
-Tracked recognition metrics are `acc` and `norm_edit_dis`. For OCR recognition, these matter more than the KIE metrics `precision`, `recall`, and `hmean`.
-
-## Web OCR Recognition Integration
-
-The web scan pipeline currently uses this exported recognition inference model:
-
-```text
-archive/models/paddleocr/mcocr2021_rec_svtr_lcnet_best_inference
-```
-
-It was exported from the training checkpoint:
-
-```text
-archive/prepared/mcocr2021_text_recognition_paddleocr/output/rec_svtr_lcnet_mcocr2021/best_accuracy
-```
-
-Important export detail: use `Global.checkpoints`, not `Global.pretrained_model`, when exporting a trained checkpoint. `pretrained_model` can leave the original PP-OCR head in place.
-
-```powershell
-.\.venvs\paddleocr-gpu\Scripts\python.exe external\PaddleOCR\tools\export_model.py `
-  -c archive\prepared\mcocr2021_text_recognition_paddleocr\rec_svtr_lcnet_mcocr2021.yml `
-  -o Global.use_gpu=False `
-     Global.checkpoints="D:/Du-an/Invoice Automation & Reconciliation System/archive/prepared/mcocr2021_text_recognition_paddleocr/output/rec_svtr_lcnet_mcocr2021/best_accuracy" `
-     Global.pretrained_model= `
-     Global.save_inference_dir="D:/Du-an/Invoice Automation & Reconciliation System/archive/models/paddleocr/mcocr2021_rec_svtr_lcnet_best_inference"
-```
-
-Current integrated checkpoint:
-
-```text
-best_epoch: 20
-acc: 0.4382812466
-norm_edit_dis: 0.8654821225
-```
-
-This is an honest test checkpoint, not a finished OCR model. It may produce noisy full-receipt recognition until training is continued and evaluated.
+Keep these experiments separate from LayoutXLM/SER. Detection quality is measured with detection metrics; recognition quality is measured with CER/WER or exact-match accuracy on crops.
 
 ## Recreate Prepared Dataset
 
@@ -284,3 +233,21 @@ uv pip install --python .\.venvs\paddleocr-gpu\Scripts\python.exe numpy==1.26.4
 ```
 
 Note: `paddlenlp==2.8.1` was not usable on Windows in this environment because one dependency had no `win_amd64` wheel.
+
+Do not install PyTorch or VietOCR into `.venvs/paddleocr-gpu`.
+
+## Recreate VietOCR Environment
+
+```powershell
+uv venv .\.venvs\vietocr --python 3.10
+uv pip install --python .\.venvs\vietocr\Scripts\python.exe pip
+uv pip install --python .\.venvs\vietocr\Scripts\python.exe torch torchvision --index-url https://download.pytorch.org/whl/cpu
+uv pip install --python .\.venvs\vietocr\Scripts\python.exe vietocr
+```
+
+Check VietOCR:
+
+```powershell
+.\.venvs\vietocr\Scripts\python.exe -c "import torch, vietocr; print(torch.__version__, torch.cuda.is_available()); print('vietocr ok')"
+.\.venvs\vietocr\Scripts\python.exe -m pip check
+```

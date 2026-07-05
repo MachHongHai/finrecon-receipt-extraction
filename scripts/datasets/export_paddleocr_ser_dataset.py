@@ -189,7 +189,6 @@ def write_config(
   infer_img:
   d2s_train_image_shape: [3, 224, 224]
   save_res_path: {yaml_path(output_dir / "output" / "ser_results.txt")}
-  kie_rec_model_dir:
   kie_det_model_dir:
   amp_custom_white_list: ['scale', 'concat', 'elementwise_add']
 

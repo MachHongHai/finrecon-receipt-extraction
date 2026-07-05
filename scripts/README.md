@@ -8,8 +8,9 @@ This folder contains development and ML operations scripts. Runtime application 
 scripts/
   datasets/             # Build, clean, export, and validate training datasets
   evaluation/           # Offline analysis and baseline evaluation helpers
+  inference/            # Runtime bridge scripts, such as VietOCR crop recognition
   training/
-    paddleocr/          # PaddleOCR/LayoutXLM/OCR recognition train, eval, GPU checks
+    paddleocr/          # PaddleOCR/LayoutXLM train, eval, GPU checks, runtime patches
 ```
 
 ## Common Commands
@@ -41,39 +42,22 @@ python scripts\datasets\export_paddleocr_ser_dataset.py --dataset-dir archive\pr
 python scripts\datasets\validate_paddleocr_ser_dataset.py --dataset-dir archive\prepared\finrecon_receipt_4field_clean\paddleocr_ser
 ```
 
-Prepare MC-OCR 2021 text recognition data for OCR fine-tuning:
-
-```powershell
-python scripts\datasets\export_mcocr_text_recognition_dataset.py --clear --copy-mode hardlink
-python scripts\datasets\validate_paddleocr_rec_dataset.py --dataset-dir archive\prepared\mcocr2021_text_recognition_paddleocr
-```
-
-Download the PaddleOCR PP-OCRv4 mobile recognition pretrained weights:
-
-```powershell
-.\scripts\training\paddleocr\download_rec_pretrained.ps1
-```
-
-Fine-tune PaddleOCR text recognition from pretrained weights:
-
-```powershell
-.\scripts\training\paddleocr\recognition_train_gpu.ps1
-```
-
 Apply local PaddleOCR runtime patches needed by the web scanner after refreshing `external/PaddleOCR`:
 
 ```powershell
 .\scripts\training\paddleocr\apply_runtime_patches.ps1
 ```
 
-Smoke test recognition training:
+Check the isolated VietOCR runtime used by the hybrid OCR option:
 
 ```powershell
-.\scripts\training\paddleocr\recognition_train_gpu.ps1 -RunName rec_smoke_1epoch -EpochNum 1 -BatchSize 8
+.\.venvs\vietocr\Scripts\python.exe -c "import torch, vietocr; print(torch.__version__, torch.cuda.is_available()); print('vietocr ok')"
+.\.venvs\vietocr\Scripts\python.exe -m pip check
 ```
 
-Evaluate the OCR recognition checkpoint:
+The next OCR training direction is split by responsibility:
 
-```powershell
-.\scripts\training\paddleocr\recognition_eval.ps1 -UseGpu
-```
+- PaddleOCR detection fine-tuning: improve text box detection on Vietnamese receipts.
+- VietOCR recognition fine-tuning: improve Vietnamese text transcription inside detected crops.
+
+The previous PaddleOCR text-recognition fine-tuning scripts and artifacts were removed to avoid mixing that experiment with the new detection + VietOCR plan.
