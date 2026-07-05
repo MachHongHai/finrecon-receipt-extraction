@@ -228,7 +228,9 @@ Chính sách dữ liệu:
 |   |-- evaluation/            # offline evaluation helpers
 |   |-- inference/             # runtime bridge scripts, e.g. VietOCR recognition
 |   `-- training/
-|       `-- paddleocr/         # train/eval/GPU/metrics scripts
+|       |-- kie_layoutxlm/      # LayoutXLM/SER train/eval scripts
+|       |-- paddleocr/         # shared PaddleOCR env/GPU/runtime patch scripts
+|       `-- paddleocr_detection/ # PaddleOCR DB detection train/eval scripts
 |-- archive/
 |   |-- README.md
 |   |-- source_mcocr/          # ignored: raw dataset
@@ -404,6 +406,30 @@ Pipeline OCR moi duoc tach thanh hai bai toan rieng:
 
 Cac script va artifact PaddleOCR text-recognition cu da duoc go bo de tranh nham voi huong detection + VietOCR.
 
+Detection dataset da duoc export tu MC-OCR 2021:
+
+```text
+archive/prepared/mcocr2021_text_detection_paddleocr
+documents: 1154
+annotations: 47626
+train/val/test: 924 / 115 / 115
+```
+
+Lenh chuan bi detection:
+
+```powershell
+python scripts\datasets\export_paddleocr_det_dataset.py --clear
+python scripts\datasets\validate_paddleocr_det_dataset.py --dataset-dir archive\prepared\mcocr2021_text_detection_paddleocr
+.\scripts\training\paddleocr_detection\download_det_pretrained.ps1
+```
+
+Train/eval detection that:
+
+```powershell
+.\scripts\training\paddleocr_detection\train_gpu.ps1
+.\scripts\training\paddleocr_detection\eval_det.ps1 -Split test -UseGpu
+```
+
 ### 5. Apply runtime patches
 
 `external/PaddleOCR/` không được commit. Sau khi clone/cài lại PaddleOCR, chạy:
@@ -435,7 +461,7 @@ Kết luận:
 
 ### OCR direction
 
-The previous integrated PaddleOCR text-recognition experiment was removed. OCR work now targets PaddleOCR detection plus VietOCR recognition, tracked as separate experiments with separate metrics.
+The previous integrated PaddleOCR text-recognition experiment was removed. OCR work now targets PaddleOCR detection plus VietOCR recognition, tracked as separate experiments with separate metrics. Detection full training is configured to save resumable `latest` checkpoints and tracked metric artifacts.
 
 ## Chính sách quản lý artifact
 
@@ -683,7 +709,9 @@ This matters because context lines such as `Tổng cộng`, `Thanh toán`, `Ngà
 |   |-- evaluation/            # offline evaluation helpers
 |   |-- inference/             # runtime bridge scripts, e.g. VietOCR recognition
 |   `-- training/
-|       `-- paddleocr/         # train/eval/GPU/metrics scripts
+|       |-- kie_layoutxlm/      # LayoutXLM/SER train/eval scripts
+|       |-- paddleocr/         # shared PaddleOCR env/GPU/runtime patch scripts
+|       `-- paddleocr_detection/ # PaddleOCR DB detection train/eval scripts
 |-- archive/
 |   |-- README.md
 |   |-- source_mcocr/          # ignored: raw dataset
@@ -859,6 +887,30 @@ The OCR pipeline is now split into two separate training targets:
 
 The previous PaddleOCR text-recognition scripts and artifacts were removed to avoid mixing that experiment with the new detection + VietOCR direction.
 
+The detection dataset has been exported from MC-OCR 2021:
+
+```text
+archive/prepared/mcocr2021_text_detection_paddleocr
+documents: 1154
+annotations: 47626
+train/val/test: 924 / 115 / 115
+```
+
+Prepare detection:
+
+```powershell
+python scripts\datasets\export_paddleocr_det_dataset.py --clear
+python scripts\datasets\validate_paddleocr_det_dataset.py --dataset-dir archive\prepared\mcocr2021_text_detection_paddleocr
+.\scripts\training\paddleocr_detection\download_det_pretrained.ps1
+```
+
+Full detection train/eval:
+
+```powershell
+.\scripts\training\paddleocr_detection\train_gpu.ps1
+.\scripts\training\paddleocr_detection\eval_det.ps1 -Split test -UseGpu
+```
+
 ### 5. Apply runtime patches
 
 `external/PaddleOCR/` is not committed. After restoring or refreshing PaddleOCR, run:
@@ -890,7 +942,7 @@ Interpretation:
 
 ### OCR direction
 
-The previous integrated PaddleOCR text-recognition experiment was removed. OCR work now targets PaddleOCR detection plus VietOCR recognition, tracked as separate experiments with separate metrics.
+The previous integrated PaddleOCR text-recognition experiment was removed. OCR work now targets PaddleOCR detection plus VietOCR recognition, tracked as separate experiments with separate metrics. Detection full training is configured to save resumable `latest` checkpoints and tracked metric artifacts.
 
 ## Artifact Policy
 

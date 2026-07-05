@@ -12,6 +12,9 @@ Project cache:       .cache/
 SER dataset:         archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser
 SER train config:    archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/ser_vi_layoutxlm_finrecon_4field.yml
 Best checkpoint:     archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/output/ser_vi_layoutxlm_finrecon_4field/best_accuracy
+Detection dataset:   archive/prepared/mcocr2021_text_detection_paddleocr
+Detection config:    archive/prepared/mcocr2021_text_detection_paddleocr/det_mv3_db_mcocr2021.yml
+Detection pretrained:archive/models/paddleocr/MobileNetV3_large_x0_5_pretrained.pdparams
 VietOCR bridge:      scripts/inference/vietocr_recognize.py
 ```
 
@@ -171,6 +174,52 @@ The old PaddleOCR text-recognition fine-tuning run has been removed. The next OC
 
 Keep these experiments separate from LayoutXLM/SER. Detection quality is measured with detection metrics; recognition quality is measured with CER/WER or exact-match accuracy on crops.
 
+## Train PaddleOCR Detection
+
+Detection data comes from MC-OCR 2021 text detector polygon files:
+
+```text
+archive/source_mcocr/text_detector/text_detector/txt
+archive/source_mcocr/train_images/train_images
+```
+
+Export and validate the PaddleOCR DB dataset:
+
+```powershell
+python scripts\datasets\export_paddleocr_det_dataset.py --clear
+python scripts\datasets\validate_paddleocr_det_dataset.py --dataset-dir archive\prepared\mcocr2021_text_detection_paddleocr
+```
+
+Download the MobileNetV3 pretrained backbone used by PaddleOCR's DB detector:
+
+```powershell
+.\scripts\training\paddleocr_detection\download_det_pretrained.ps1
+```
+
+Full train and evaluation:
+
+```powershell
+.\scripts\training\paddleocr_detection\train_gpu.ps1
+.\scripts\training\paddleocr_detection\eval_det.ps1 -Split test -UseGpu
+```
+
+Detection training saves resumable checkpoints:
+
+```text
+archive/prepared/mcocr2021_text_detection_paddleocr/output/det_mv3_db_mcocr2021/latest.*
+archive/prepared/mcocr2021_text_detection_paddleocr/output/det_mv3_db_mcocr2021/best_accuracy.*
+```
+
+`train_gpu.ps1` automatically resumes from `latest` when it exists. Use `-NoResume` only when intentionally starting over.
+
+Current prepared export:
+
+```text
+documents: 1154
+annotations: 47626
+train/val/test: 924 / 115 / 115
+```
+
 ## Recreate Prepared Dataset
 
 Raw MC-OCR data should stay read-only under:
@@ -186,6 +235,8 @@ python scripts\datasets\prepare_receipt_4field_dataset.py --clear --copy-mode ha
 python scripts\datasets\clean_receipt_4field_dataset.py --clear --copy-mode hardlink
 python scripts\datasets\export_paddleocr_ser_dataset.py --dataset-dir archive\prepared\finrecon_receipt_4field_clean --output-dir archive\prepared\finrecon_receipt_4field_clean\paddleocr_ser --copy-mode hardlink --epoch-num 10 --eval-step 250 --batch-size 2 --learning-rate 0.00002 --warmup-epoch 1 --clip-norm-global 1.0
 python scripts\datasets\validate_paddleocr_ser_dataset.py --dataset-dir archive\prepared\finrecon_receipt_4field_clean\paddleocr_ser
+python scripts\datasets\export_paddleocr_det_dataset.py --clear
+python scripts\datasets\validate_paddleocr_det_dataset.py --dataset-dir archive\prepared\mcocr2021_text_detection_paddleocr
 ```
 
 ## Dataset Notes
@@ -206,20 +257,6 @@ Clean policy:
 - Do not demote `TOTAL_COST` just because a line has no amount.
 - Do not demote `TIMESTAMP` just because a line has no date/time.
 - Skip only truly invalid annotations such as empty text or bad geometry.
-
-## CPU Environment
-
-The CPU env exists mainly for lightweight checks. It is too slow for real LayoutXLM training.
-
-Checked CPU env:
-
-```text
-Python: 3.10.20
-PaddlePaddle: 2.6.2 CPU
-PaddleNLP: 2.6.1
-OpenCV: 4.6.0
-NumPy: 1.26.4
-```
 
 ## Recreate GPU Environment
 

@@ -81,10 +81,15 @@ scripts/training/kie_layoutxlm/train_gpu.ps1
 scripts/training/kie_layoutxlm/eval_ser.ps1
 scripts/training/kie_layoutxlm/track_metrics.py
 scripts/training/paddleocr/apply_runtime_patches.ps1
+scripts/training/paddleocr_detection/download_det_pretrained.ps1
+scripts/training/paddleocr_detection/train_gpu.ps1
+scripts/training/paddleocr_detection/eval_det.ps1
 scripts/datasets/prepare_receipt_4field_dataset.py
 scripts/datasets/clean_receipt_4field_dataset.py
 scripts/datasets/export_paddleocr_ser_dataset.py
 scripts/datasets/validate_paddleocr_ser_dataset.py
+scripts/datasets/export_paddleocr_det_dataset.py
+scripts/datasets/validate_paddleocr_det_dataset.py
 scripts/inference/vietocr_recognize.py
 ```
 
@@ -149,6 +154,16 @@ PaddleOCR detection fine-tuning for bbox coverage.
 VietOCR recognition fine-tuning for Vietnamese text quality.
 ```
 
+PaddleOCR detection setup is prepared from MC-OCR 2021:
+
+```text
+archive/prepared/mcocr2021_text_detection_paddleocr
+documents: 1154
+annotations: 47626
+train/val/test: 924 / 115 / 115
+pretrained: archive/models/paddleocr/MobileNetV3_large_x0_5_pretrained.pdparams
+```
+
 
 Current web KIE choices:
 
@@ -163,10 +178,11 @@ If the app misreads characters such as `I/l/1`, `O/0`, or `S/5`, that is mostly 
 
 Likely next model work:
 
-1. Prepare PaddleOCR detection fine-tuning from MC-OCR polygons.
-2. Prepare VietOCR recognition fine-tuning from text-line crops.
-3. Track OCR CER/WER/exact-match separately from KIE F1.
-4. Keep the current LayoutXLM checkpoint unless a new validation/test run beats it.
+1. Run a real PaddleOCR detection fine-tune from `mcocr2021_text_detection_paddleocr`.
+2. Export the best detection checkpoint to inference format.
+3. Integrate the trained detector as a selectable detection model in web inference.
+4. Prepare VietOCR recognition fine-tuning from text-line crops.
+5. Track detection hmean separately from recognition CER/WER and KIE F1.
 
 ## Dataset
 
@@ -180,6 +196,15 @@ Prepared/clean KIE dataset:
 
 ```text
 archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/
+```
+
+Prepared PaddleOCR detection dataset:
+
+```text
+archive/prepared/mcocr2021_text_detection_paddleocr/
+train: 924 documents, 37827 polygons
+val:   115 documents, 4760 polygons
+test:  115 documents, 5039 polygons
 ```
 
 Current label set:

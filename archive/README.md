@@ -37,7 +37,16 @@ archive/
             best_accuracy/              # current best checkpoint
         reports/
           gpu_10epoch_tracked.*         # current kept train/eval logs
-  models/                               # optional future exported models, ignored
+    mcocr2021_text_detection_paddleocr/ # PaddleOCR DB detection export, ignored
+      images/
+      train.txt
+      val.txt
+      test.txt
+      det_mv3_db_mcocr2021.yml
+      reports/
+  models/
+    paddleocr/
+      MobileNetV3_large_x0_5_pretrained.pdparams
 ```
 
 ## Active Dataset
@@ -64,6 +73,20 @@ The current best checkpoint is:
 archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/output/ser_vi_layoutxlm_finrecon_4field/best_accuracy
 ```
 
+The active PaddleOCR detection dataset is:
+
+```text
+archive/prepared/mcocr2021_text_detection_paddleocr
+```
+
+Current detection export:
+
+```text
+documents: 1154
+annotations: 47626
+train/val/test: 924 / 115 / 115
+```
+
 ## Recreate Training Data
 
 Put the raw MC-OCR source under:
@@ -79,6 +102,8 @@ python scripts\datasets\prepare_receipt_4field_dataset.py --clear --copy-mode ha
 python scripts\datasets\clean_receipt_4field_dataset.py --clear --copy-mode hardlink
 python scripts\datasets\export_paddleocr_ser_dataset.py --dataset-dir archive\prepared\finrecon_receipt_4field_clean --output-dir archive\prepared\finrecon_receipt_4field_clean\paddleocr_ser --copy-mode hardlink --epoch-num 10 --eval-step 250 --batch-size 2 --learning-rate 0.00002 --warmup-epoch 1 --clip-norm-global 1.0
 python scripts\datasets\validate_paddleocr_ser_dataset.py --dataset-dir archive\prepared\finrecon_receipt_4field_clean\paddleocr_ser
+python scripts\datasets\export_paddleocr_det_dataset.py --clear
+python scripts\datasets\validate_paddleocr_det_dataset.py --dataset-dir archive\prepared\mcocr2021_text_detection_paddleocr
 ```
 
 Future OCR data preparation should be split into:
@@ -92,6 +117,9 @@ Future OCR data preparation should be split into:
 .\scripts\training\paddleocr\gpu_check.ps1
 .\scripts\training\kie_layoutxlm\train_gpu.ps1
 .\scripts\training\kie_layoutxlm\eval_ser.ps1 -Split test -UseGpu
+.\scripts\training\paddleocr_detection\download_det_pretrained.ps1
+.\scripts\training\paddleocr_detection\train_gpu.ps1
+.\scripts\training\paddleocr_detection\eval_det.ps1 -Split test -UseGpu
 ```
 
 ## Sharing Dataset Or Model

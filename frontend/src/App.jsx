@@ -191,7 +191,11 @@ function App() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.detail || "Inference failed.");
       setResult(data);
-      setNotice(`Inference completed with ${data.ocr_engine_label} + ${data.kie_engine_label}.`);
+      setNotice(
+        `Inference completed with ${data.ocr_engine_label} + ${data.kie_engine_label} on ${(
+          data.device || "cpu"
+        ).toUpperCase()}.`,
+      );
     } catch (error) {
       setNotice(`Error: ${error.message}`);
     } finally {
@@ -342,6 +346,8 @@ function App() {
                 <span className="font-bold text-emerald-300">{result.ocr_engine_label}</span>
                 <span className="mx-2 text-zinc-600">+</span>
                 <span className="font-bold text-emerald-300">{result.kie_engine_label}</span>
+                <span className="mx-2 text-zinc-600">|</span>
+                Device: <span className="font-bold text-emerald-300">{(result.device || "cpu").toUpperCase()}</span>
               </div>
             )}
 

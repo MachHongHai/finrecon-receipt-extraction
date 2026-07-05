@@ -178,6 +178,23 @@ PaddleOCR detection fine-tuning: images + text polygons.
 VietOCR recognition fine-tuning: cropped text-line images + transcripts.
 ```
 
+PaddleOCR detection is now prepared:
+
+```text
+archive/prepared/mcocr2021_text_detection_paddleocr
+documents: 1154
+annotations: 47626
+train/val/test: 924 / 115 / 115
+pretrained: archive/models/paddleocr/MobileNetV3_large_x0_5_pretrained.pdparams
+```
+
+Next step is full detection fine-tuning:
+
+```powershell
+.\scripts\training\paddleocr_detection\train_gpu.ps1
+.\scripts\training\paddleocr_detection\eval_det.ps1 -Split test -UseGpu
+```
+
 ## 11. Run Commands
 
 Backend:

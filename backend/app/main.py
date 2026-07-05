@@ -142,6 +142,7 @@ async def scan_image(
         "mode": "paddleocr_layoutxlm_model_selectable",
         "ocr_engine": payload.get("ocr_engine"),
         "kie_engine": payload.get("kie_engine"),
+        "device": payload.get("device"),
         "ocr_engine_label": payload.get("ocr_engine_label"),
         "kie_engine_label": payload.get("kie_engine_label"),
         "fields": _field_rows(payload),

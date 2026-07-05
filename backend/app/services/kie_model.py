@@ -4,6 +4,7 @@ import json
 import os
 import re
 import subprocess
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,8 @@ INFER_SCRIPT = PADDLEOCR_ROOT / "tools" / "infer_kie_token_ser.py"
 VIETOCR_SCRIPT = REPO_ROOT / "scripts" / "inference" / "vietocr_recognize.py"
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 FIELD_LABELS = {"SELLER", "ADDRESS", "TIMESTAMP", "TOTAL_COST"}
+GPU_CHECK_TTL_SECONDS = 60
+_GPU_CHECK_CACHE: dict[str, Any] = {"checked_at": 0.0, "available": False, "reason": "not checked"}
 
 # Keep these option keys explicit. "pretrained" means the official Chinese
 # PP-OCRv4 pipeline. Vietnamese/Latin is a separate option so benchmarking is
@@ -136,6 +139,48 @@ def _python_can_import(python_path: Path, module_name: str) -> tuple[bool, str |
     log_text = "\n".join(part for part in (completed.stdout, completed.stderr) if part).strip()
     detail = log_text.splitlines()[-1] if log_text else f"could not import {module_name}"
     return False, detail
+
+
+def _paddle_gpu_available(python_path: Path) -> tuple[bool, str | None]:
+    now = time.monotonic()
+    if now - float(_GPU_CHECK_CACHE["checked_at"]) < GPU_CHECK_TTL_SECONDS:
+        return bool(_GPU_CHECK_CACHE["available"]), _GPU_CHECK_CACHE.get("reason")
+
+    if not python_path.exists():
+        reason = f"Python runtime not found: {python_path}"
+        _GPU_CHECK_CACHE.update({"checked_at": now, "available": False, "reason": reason})
+        return False, reason
+
+    probe = (
+        "import paddle\n"
+        "compiled = paddle.is_compiled_with_cuda()\n"
+        "count = 0\n"
+        "try:\n"
+        "    count = paddle.device.cuda.device_count()\n"
+        "except Exception:\n"
+        "    count = 0\n"
+        "print('gpu_available=' + str(bool(compiled and count > 0)))\n"
+        "print('compiled=' + str(compiled))\n"
+        "print('gpu_count=' + str(count))\n"
+    )
+    completed = subprocess.run(
+        [str(python_path), "-c", probe],
+        env=_runtime_env(),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+    stdout_text = completed.stdout.strip()
+    log_text = "\n".join(part for part in (completed.stdout, completed.stderr) if part).strip()
+    available = completed.returncode == 0 and "gpu_available=True" in stdout_text
+    reason = None
+    if not available:
+        probe_lines = [line for line in stdout_text.splitlines() if line.startswith(("compiled=", "gpu_count="))]
+        reason = ", ".join(probe_lines) if probe_lines else (log_text.splitlines()[-1] if log_text else "GPU is not available")
+    _GPU_CHECK_CACHE.update({"checked_at": now, "available": available, "reason": reason})
+    return available, reason
 
 
 def _missing_vietocr_runtime() -> list[str]:
@@ -242,22 +287,30 @@ def _runtime_env() -> dict[str, str]:
     return env
 
 
-def _run_inference(
-    image_path: Path,
+def _looks_like_gpu_runtime_error(log_text: str) -> bool:
+    lowered = log_text.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "cannot use gpu",
+            "no gpu detected",
+            "cuda device is not set properly",
+            "use wrong place",
+            "cudaplace",
+        )
+    )
+
+
+def _build_inference_args(
     *,
+    python_path: Path,
+    config_path: Path,
+    checkpoint_dir: Path | None,
+    image_path: Path,
+    output_dir: Path,
     ocr_engine: str,
-    kie_engine: str,
-    use_gpu: bool = True,
-    timeout_seconds: int = 180,
-) -> tuple[list[dict[str, Any]], str]:
-    ocr_engine = _validate_choice(ocr_engine, OCR_ENGINE_PROFILES, DEFAULT_OCR_ENGINE, "OCR engine")
-    kie_engine = _validate_choice(kie_engine, KIE_ENGINE_PROFILES, DEFAULT_KIE_ENGINE, "KIE engine")
-    python_path, config_path, checkpoint_dir = _validate_runtime(ocr_engine, kie_engine)
-
-    work_dir = _path_from_env("PADDLEOCR_KIE_WORK_DIR", DEFAULT_WORK_DIR)
-    output_dir = work_dir / uuid.uuid4().hex
-    output_dir.mkdir(parents=True, exist_ok=True)
-
+    use_gpu: bool,
+) -> list[str]:
     args = [
         str(python_path),
         str(INFER_SCRIPT),
@@ -283,6 +336,40 @@ def _run_inference(
                 f"Global.vietocr_script={vietocr_script}",
             ]
         )
+    return args
+
+
+def _run_inference(
+    image_path: Path,
+    *,
+    ocr_engine: str,
+    kie_engine: str,
+    use_gpu: bool | None = None,
+    timeout_seconds: int = 180,
+) -> tuple[list[dict[str, Any]], str, str]:
+    ocr_engine = _validate_choice(ocr_engine, OCR_ENGINE_PROFILES, DEFAULT_OCR_ENGINE, "OCR engine")
+    kie_engine = _validate_choice(kie_engine, KIE_ENGINE_PROFILES, DEFAULT_KIE_ENGINE, "KIE engine")
+    python_path, config_path, checkpoint_dir = _validate_runtime(ocr_engine, kie_engine)
+
+    work_dir = _path_from_env("PADDLEOCR_KIE_WORK_DIR", DEFAULT_WORK_DIR)
+    output_dir = work_dir / uuid.uuid4().hex
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if use_gpu is None:
+        gpu_available, _ = _paddle_gpu_available(python_path)
+        requested_gpu = gpu_available
+    else:
+        requested_gpu = use_gpu
+
+    args = _build_inference_args(
+        python_path=python_path,
+        config_path=config_path,
+        checkpoint_dir=checkpoint_dir,
+        image_path=image_path,
+        output_dir=output_dir,
+        ocr_engine=ocr_engine,
+        use_gpu=requested_gpu,
+    )
     completed = subprocess.run(
         args,
         cwd=str(PADDLEOCR_ROOT),
@@ -294,6 +381,30 @@ def _run_inference(
         timeout=timeout_seconds,
     )
     log_text = "\n".join(part for part in (completed.stdout, completed.stderr) if part)
+    actual_device = "gpu" if requested_gpu else "cpu"
+    if completed.returncode != 0 and requested_gpu and _looks_like_gpu_runtime_error(log_text):
+        args = _build_inference_args(
+            python_path=python_path,
+            config_path=config_path,
+            checkpoint_dir=checkpoint_dir,
+            image_path=image_path,
+            output_dir=output_dir,
+            ocr_engine=ocr_engine,
+            use_gpu=False,
+        )
+        completed = subprocess.run(
+            args,
+            cwd=str(PADDLEOCR_ROOT),
+            env=_runtime_env(),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds,
+        )
+        log_text = "\n".join(part for part in (completed.stdout, completed.stderr) if part)
+        actual_device = "cpu"
+
     if completed.returncode != 0:
         raise KieModelError(f"PaddleOCR inference failed with code {completed.returncode}:\n{log_text[-4000:]}")
 
@@ -307,7 +418,7 @@ def _run_inference(
         ocr_info = json.loads(payload).get("ocr_info", [])
     except Exception as exc:
         raise KieModelError(f"Could not parse PaddleOCR output: {exc}") from exc
-    return ocr_info, str(output_dir)
+    return ocr_info, str(output_dir), actual_device
 
 
 def _normalize_label(value: Any) -> str:
@@ -395,11 +506,11 @@ def extract_receipt_fields_model_only(
     *,
     ocr_engine: str = DEFAULT_OCR_ENGINE,
     kie_engine: str = DEFAULT_KIE_ENGINE,
-    use_gpu: bool = True,
+    use_gpu: bool | None = None,
 ) -> dict[str, Any]:
     ocr_engine = _validate_choice(ocr_engine, OCR_ENGINE_PROFILES, DEFAULT_OCR_ENGINE, "OCR engine")
     kie_engine = _validate_choice(kie_engine, KIE_ENGINE_PROFILES, DEFAULT_KIE_ENGINE, "KIE engine")
-    tokens, output_dir = _run_inference(
+    tokens, output_dir, actual_device = _run_inference(
         image_path.resolve(),
         ocr_engine=ocr_engine,
         kie_engine=kie_engine,
@@ -409,6 +520,7 @@ def extract_receipt_fields_model_only(
     payload["model_output_dir"] = output_dir
     payload["ocr_engine"] = ocr_engine
     payload["kie_engine"] = kie_engine
+    payload["device"] = actual_device
     payload["ocr_engine_label"] = OCR_ENGINE_PROFILES[ocr_engine]["label"]
     payload["kie_engine_label"] = KIE_ENGINE_PROFILES[kie_engine]["label"]
     return payload
