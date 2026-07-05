@@ -77,9 +77,9 @@ Training/tools:
 ```text
 scripts/training/paddleocr/env.ps1
 scripts/training/paddleocr/gpu_check.ps1
-scripts/training/paddleocr/train_gpu.ps1
-scripts/training/paddleocr/eval_ser.ps1
-scripts/training/paddleocr/track_metrics.py
+scripts/training/kie_layoutxlm/train_gpu.ps1
+scripts/training/kie_layoutxlm/eval_ser.ps1
+scripts/training/kie_layoutxlm/track_metrics.py
 scripts/training/paddleocr/apply_runtime_patches.ps1
 scripts/datasets/prepare_receipt_4field_dataset.py
 scripts/datasets/clean_receipt_4field_dataset.py
@@ -280,13 +280,13 @@ GPU check:
 Train current LayoutXLM/SER config:
 
 ```powershell
-.\scripts\training\paddleocr\train_gpu.ps1
+.\scripts\training\kie_layoutxlm\train_gpu.ps1
 ```
 
 Evaluate current best checkpoint:
 
 ```powershell
-.\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
+.\scripts\training\kie_layoutxlm\eval_ser.ps1 -Split test -UseGpu
 ```
 
 ## Recommended Next Steps

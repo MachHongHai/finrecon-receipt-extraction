@@ -24,13 +24,13 @@ Check GPU:
 Train the current LayoutXLM/SER config:
 
 ```powershell
-.\scripts\training\paddleocr\train_gpu.ps1
+.\scripts\training\kie_layoutxlm\train_gpu.ps1
 ```
 
 Evaluate the current best checkpoint:
 
 ```powershell
-.\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
+.\scripts\training\kie_layoutxlm\eval_ser.ps1 -Split test -UseGpu
 ```
 
 Recreate prepared dataset exports:

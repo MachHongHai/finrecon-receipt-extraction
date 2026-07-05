@@ -6,7 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-. (Join-Path $PSScriptRoot "env.ps1")
+. (Join-Path $PSScriptRoot "..\paddleocr\env.ps1")
 
 $RepoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..\..")
 $Python = Join-Path $RepoRoot ".venvs\paddleocr-gpu\Scripts\python.exe"

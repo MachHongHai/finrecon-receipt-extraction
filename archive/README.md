@@ -90,8 +90,8 @@ Future OCR data preparation should be split into:
 
 ```powershell
 .\scripts\training\paddleocr\gpu_check.ps1
-.\scripts\training\paddleocr\train_gpu.ps1
-.\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
+.\scripts\training\kie_layoutxlm\train_gpu.ps1
+.\scripts\training\kie_layoutxlm\eval_ser.ps1 -Split test -UseGpu
 ```
 
 ## Sharing Dataset Or Model

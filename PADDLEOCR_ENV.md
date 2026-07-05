@@ -147,7 +147,7 @@ Validate GPU:
 Run the current training config:
 
 ```powershell
-.\scripts\training\paddleocr\train_gpu.ps1
+.\scripts\training\kie_layoutxlm\train_gpu.ps1
 ```
 
 The script validates the PaddleOCR SER dataset first, then writes logs and tracked metrics to:
@@ -159,7 +159,7 @@ archive/prepared/finrecon_receipt_4field_clean/paddleocr_ser/reports/
 Evaluate current best checkpoint:
 
 ```powershell
-.\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
+.\scripts\training\kie_layoutxlm\eval_ser.ps1 -Split test -UseGpu
 ```
 
 ## OCR Training Direction

@@ -7,14 +7,14 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-. (Join-Path $PSScriptRoot "env.ps1")
+. (Join-Path $PSScriptRoot "..\paddleocr\env.ps1")
 
 $RepoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..\..")
 $Python = Join-Path $RepoRoot ".venvs\paddleocr-gpu\Scripts\python.exe"
 $TrainScript = Join-Path $RepoRoot "external\PaddleOCR\tools\train.py"
 $Maker = Join-Path $RepoRoot "scripts\datasets\make_paddleocr_smoke_dataset.py"
 $Validator = Join-Path $RepoRoot "scripts\datasets\validate_paddleocr_ser_dataset.py"
-$Tracker = Join-Path $RepoRoot "scripts\training\paddleocr\track_metrics.py"
+$Tracker = Join-Path $RepoRoot "scripts\training\kie_layoutxlm\track_metrics.py"
 
 $Source = Join-Path $RepoRoot $SourceDir
 $Smoke = Join-Path $RepoRoot $SmokeDir

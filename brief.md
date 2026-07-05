@@ -203,7 +203,7 @@ GPU check:
 Evaluate current best model:
 
 ```powershell
-.\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
+.\scripts\training\kie_layoutxlm\eval_ser.ps1 -Split test -UseGpu
 ```
 
 ## 12. Future Product Direction

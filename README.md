@@ -386,13 +386,13 @@ python scripts\datasets\validate_paddleocr_ser_dataset.py --dataset-dir archive\
 ### 3. Train LayoutXLM/SER
 
 ```powershell
-.\scripts\training\paddleocr\train_gpu.ps1
+.\scripts\training\kie_layoutxlm\train_gpu.ps1
 ```
 
 Evaluate checkpoint:
 
 ```powershell
-.\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
+.\scripts\training\kie_layoutxlm\eval_ser.ps1 -Split test -UseGpu
 ```
 
 ### 4. Huong OCR tiep theo
@@ -841,13 +841,13 @@ python scripts\datasets\validate_paddleocr_ser_dataset.py --dataset-dir archive\
 ### 3. Train LayoutXLM/SER
 
 ```powershell
-.\scripts\training\paddleocr\train_gpu.ps1
+.\scripts\training\kie_layoutxlm\train_gpu.ps1
 ```
 
 Evaluate checkpoint:
 
 ```powershell
-.\scripts\training\paddleocr\eval_ser.ps1 -Split test -UseGpu
+.\scripts\training\kie_layoutxlm\eval_ser.ps1 -Split test -UseGpu
 ```
 
 ### 4. Next OCR direction
