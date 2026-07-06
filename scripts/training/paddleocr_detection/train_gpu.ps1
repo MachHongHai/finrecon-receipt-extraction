@@ -1,7 +1,8 @@
 param(
     [string]$ConfigPath = "archive\prepared\mcocr2021_text_detection_paddleocr\det_mv3_db_mcocr2021.yml",
     [string]$RunName = "",
-    [switch]$NoResume
+    [switch]$NoResume,
+    [string]$CheckpointName = "latest"
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,12 +26,17 @@ $LogPath = Join-Path $ReportsDir "$ResolvedRunName.log"
 $JsonlPath = Join-Path $ReportsDir "$ResolvedRunName.metrics.jsonl"
 $CsvPath = Join-Path $ReportsDir "$ResolvedRunName.metrics.csv"
 $SummaryPath = Join-Path $ReportsDir "$ResolvedRunName.summary.json"
-$LatestCheckpoint = Join-Path $DatasetDir "output\det_mv3_db_mcocr2021\latest"
+$OutputDir = Join-Path $DatasetDir "output\det_db_mv3_mcocr2021_receipts_v2"
+$ResumeCheckpoint = Join-Path $OutputDir $CheckpointName
+$PretrainedParams = Join-Path $RepoRoot "archive\models\paddleocr\ch_ppocr_mobile_v2.0_det_train\best_accuracy.pdparams"
 
 foreach ($path in @($Python, $TrainScript, $Config, $Validator, $Tracker)) {
     if (-not (Test-Path -LiteralPath $path)) {
         throw "Missing required file: $path"
     }
+}
+if (-not (Test-Path -LiteralPath $PretrainedParams)) {
+    throw "Missing PaddleOCR DB detector pretrained checkpoint. Run: .\scripts\training\paddleocr_detection\download_det_pretrained.ps1"
 }
 
 New-Item -ItemType Directory -Force -Path $ReportsDir | Out-Null
@@ -42,11 +48,11 @@ if ($LASTEXITCODE -ne 0) {
 $PreviousErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 $Overrides = @("Global.use_gpu=True")
-if (-not $NoResume -and (Test-Path -LiteralPath ($LatestCheckpoint + ".pdparams"))) {
-    Write-Host "Resuming detection training from: $LatestCheckpoint"
-    $Overrides += "Global.checkpoints=$LatestCheckpoint"
+if (-not $NoResume -and (Test-Path -LiteralPath ($ResumeCheckpoint + ".pdparams"))) {
+    Write-Host "Resuming detection training from: $ResumeCheckpoint"
+    $Overrides += "Global.checkpoints=$ResumeCheckpoint"
 } else {
-    Write-Host "Starting detection training from config pretrained_model."
+    Write-Host "Starting detection fine-tune from config pretrained_model."
 }
 & $Python $TrainScript -c $Config -o @Overrides 2>&1 | Tee-Object -FilePath $LogPath
 $TrainExitCode = $LASTEXITCODE

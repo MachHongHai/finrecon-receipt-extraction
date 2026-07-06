@@ -2,6 +2,7 @@ param(
     [string]$ConfigPath = "archive\prepared\mcocr2021_text_detection_paddleocr\det_mv3_db_mcocr2021.yml",
     [ValidateSet("val", "test")]
     [string]$Split = "test",
+    [string]$CheckpointName = "best_accuracy",
     [switch]$UseGpu
 )
 
@@ -17,13 +18,16 @@ $Config = if ([System.IO.Path]::IsPathRooted($ConfigPath)) {
     Join-Path $RepoRoot $ConfigPath
 }
 $DatasetDir = Split-Path -Parent $Config
-$Checkpoint = Join-Path $DatasetDir "output\det_mv3_db_mcocr2021\best_accuracy"
+$Checkpoint = Join-Path $DatasetDir "output\det_db_mv3_mcocr2021_receipts_v2\$CheckpointName"
 $LabelFile = Join-Path $DatasetDir "$Split.txt"
 
-foreach ($path in @($Python, $EvalScript, $Config, $Checkpoint, $LabelFile)) {
+foreach ($path in @($Python, $EvalScript, $Config, $LabelFile)) {
     if (-not (Test-Path -LiteralPath $path)) {
         throw "Missing required file: $path"
     }
+}
+if (-not (Test-Path -LiteralPath ($Checkpoint + ".pdparams"))) {
+    throw "Missing required checkpoint params: $($Checkpoint).pdparams"
 }
 
 $gpuValue = if ($UseGpu) { "True" } else { "False" }

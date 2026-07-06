@@ -52,6 +52,14 @@ python scripts\datasets\validate_paddleocr_det_dataset.py --dataset-dir archive\
 .\scripts\training\paddleocr_detection\download_det_pretrained.ps1
 ```
 
+The detection fine-tune intentionally uses PaddleOCR's full DB detector checkpoint:
+
+```text
+archive/models/paddleocr/ch_ppocr_mobile_v2.0_det_train/best_accuracy
+```
+
+Do not fine-tune detection from the old bare `MobileNetV3_large_x0_5_pretrained.pdparams` backbone; that produced low-recall runs.
+
 Train/evaluate PaddleOCR detection:
 
 ```powershell

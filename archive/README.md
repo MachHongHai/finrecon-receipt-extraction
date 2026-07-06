@@ -43,10 +43,13 @@ archive/
       val.txt
       test.txt
       det_mv3_db_mcocr2021.yml
+      output/
+        det_db_mv3_mcocr2021_receipts_v2/ # detection checkpoints, ignored
       reports/
   models/
     paddleocr/
-      MobileNetV3_large_x0_5_pretrained.pdparams
+      ch_ppocr_mobile_v2.0_det_train/     # full DB detector pretrained checkpoint
+        best_accuracy.pdparams
 ```
 
 ## Active Dataset
@@ -85,6 +88,18 @@ Current detection export:
 documents: 1154
 annotations: 47626
 train/val/test: 924 / 115 / 115
+```
+
+The active detection fine-tune starts from PaddleOCR's full DB detector checkpoint, not a bare MobileNetV3 backbone:
+
+```text
+archive/models/paddleocr/ch_ppocr_mobile_v2.0_det_train/best_accuracy
+```
+
+Detection training outputs are isolated under:
+
+```text
+archive/prepared/mcocr2021_text_detection_paddleocr/output/det_db_mv3_mcocr2021_receipts_v2
 ```
 
 ## Recreate Training Data

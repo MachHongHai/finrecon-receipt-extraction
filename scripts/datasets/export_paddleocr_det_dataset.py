@@ -12,7 +12,7 @@ from typing import Any
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 DEFAULT_SOURCE_DIR = Path("archive/source_mcocr")
 DEFAULT_OUTPUT_DIR = Path("archive/prepared/mcocr2021_text_detection_paddleocr")
-DEFAULT_PRETRAINED_MODEL = Path("archive/models/paddleocr/MobileNetV3_large_x0_5_pretrained.pdparams")
+DEFAULT_PRETRAINED_MODEL = Path("archive/models/paddleocr/ch_ppocr_mobile_v2.0_det_train/best_accuracy")
 
 
 def parse_polygon_line(line: str) -> list[list[float]] | None:
@@ -37,12 +37,12 @@ def polygon_area(points: list[list[float]]) -> float:
     return abs(area) / 2.0
 
 
-def find_image(image_dirs: list[Path], stem: str) -> Path | None:
-    for image_dir in image_dirs:
+def find_image(image_dirs: list[tuple[str, Path]], stem: str) -> tuple[str, Path] | None:
+    for source_name, image_dir in image_dirs:
         for suffix in IMAGE_SUFFIXES:
             candidate = image_dir / f"{stem}{suffix}"
             if candidate.exists():
-                return candidate
+                return source_name, candidate
     return None
 
 
@@ -73,6 +73,10 @@ def yaml_path(path: Path) -> str:
     return path.as_posix()
 
 
+def yaml_float(value: float) -> str:
+    return f"{value:.10f}".rstrip("0").rstrip(".")
+
+
 def write_config(
     output_dir: Path,
     *,
@@ -83,8 +87,9 @@ def write_config(
     pretrained_model: Path,
 ) -> None:
     config_path = output_dir / "det_mv3_db_mcocr2021.yml"
-    save_dir = output_dir / "output" / "det_mv3_db_mcocr2021"
+    save_dir = output_dir / "output" / "det_db_mv3_mcocr2021_receipts_v2"
     pretrained_value = yaml_path(pretrained_model)
+    learning_rate_value = yaml_float(learning_rate)
     config = f"""Global:
   use_gpu: true
   use_xpu: false
@@ -93,7 +98,7 @@ def write_config(
   log_smooth_window: 20
   print_batch_step: 10
   save_model_dir: {yaml_path(save_dir)}
-  save_epoch_step: {epoch_num}
+  save_epoch_step: 5
   eval_batch_step: [0, {eval_step}]
   cal_metric_during_train: false
   pretrained_model: {pretrained_value}
@@ -114,9 +119,10 @@ Architecture:
     name: MobileNetV3
     scale: 0.5
     model_name: large
+    disable_se: true
   Neck:
     name: DBFPN
-    out_channels: 256
+    out_channels: 96
   Head:
     name: DBHead
     k: 50
@@ -134,7 +140,9 @@ Optimizer:
   beta1: 0.9
   beta2: 0.999
   lr:
-    learning_rate: {learning_rate}
+    name: Cosine
+    learning_rate: {learning_rate_value}
+    warmup_epoch: 1
   regularizer:
     name: L2
     factor: 0
@@ -142,7 +150,7 @@ Optimizer:
 PostProcess:
   name: DBPostProcess
   thresh: 0.3
-  box_thresh: 0.6
+  box_thresh: 0.4
   max_candidates: 1000
   unclip_ratio: 1.5
 
@@ -164,11 +172,10 @@ Train:
       - DetLabelEncode:
       - IaaAugment:
           augmenter_args:
-            - {{type: Fliplr, args: {{p: 0.5}}}}
-            - {{type: Affine, args: {{rotate: [-10, 10]}}}}
-            - {{type: Resize, args: {{size: [0.5, 3]}}}}
+            - {{type: Affine, args: {{rotate: [-5, 5]}}}}
+            - {{type: Resize, args: {{size: [0.75, 1.5]}}}}
       - EastRandomCropData:
-          size: [640, 640]
+          size: [960, 960]
           max_tries: 50
           keep_ratio: true
       - MakeBorderMap:
@@ -205,7 +212,6 @@ Eval:
           channel_first: false
       - DetLabelEncode:
       - DetResizeForTest:
-          image_shape: [736, 1280]
       - NormalizeImage:
           scale: 1./255.
           mean: [0.485, 0.456, 0.406]
@@ -229,6 +235,7 @@ def write_readme(output_dir: Path, report: dict[str, Any]) -> None:
         "# MC-OCR 2021 PaddleOCR Detection Export",
         "",
         "This dataset is generated from `archive/source_mcocr/text_detector/text_detector/txt`.",
+        "Detector annotations are paired with `archive/source_mcocr/preprocessor/preprocessor/imgs` first because MC-OCR text detector polygons are aligned to those preprocessed images, not always to `train_images`.",
         "Raw MC-OCR files are not modified.",
         "",
         "## Summary",
@@ -238,10 +245,11 @@ def write_readme(output_dir: Path, report: dict[str, Any]) -> None:
         f"- Train/Val/Test: {report['splits']['train']} / {report['splits']['val']} / {report['splits']['test']}",
         f"- Missing images skipped: {report['missing_images']}",
         f"- Invalid polygons skipped: {report['invalid_polygons']}",
+        f"- Image sources: {json.dumps(report['image_source_counts'], ensure_ascii=False)}",
         "",
         "## Commands",
         "",
-        "Download detection pretrained weights:",
+        "Download the full PaddleOCR DB detector checkpoint used for fine-tuning:",
         "",
         "```powershell",
         ".\\scripts\\training\\paddleocr_detection\\download_det_pretrained.ps1",
@@ -258,6 +266,18 @@ def write_readme(output_dir: Path, report: dict[str, Any]) -> None:
         "```powershell",
         ".\\scripts\\training\\paddleocr_detection\\train_gpu.ps1",
         "```",
+        "",
+        "Fine-tuning starts from:",
+        "",
+        "```text",
+        "archive/models/paddleocr/ch_ppocr_mobile_v2.0_det_train/best_accuracy",
+        "```",
+        "",
+        "Training outputs are written to:",
+        "",
+        "```text",
+        "archive/prepared/mcocr2021_text_detection_paddleocr/output/det_db_mv3_mcocr2021_receipts_v2",
+        "```",
     ]
     (output_dir / "README_TRAINING.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
@@ -273,8 +293,11 @@ def export(args: argparse.Namespace) -> None:
     if not txt_dir.exists():
         txt_dir = source_dir / "dataset" / "text_detector" / "txt"
     image_dirs = [
-        source_dir / "train_images" / "train_images",
-        source_dir / "kie_data" / "kie_data" / "images",
+        ("preprocessor", source_dir / "preprocessor" / "preprocessor" / "imgs"),
+        ("text_detector_visualize", source_dir / "text_detector" / "text_detector" / "visualize_imgs"),
+        ("dataset_text_detector_visualize", source_dir / "dataset" / "text_detector" / "visualize_imgs"),
+        ("train_images", source_dir / "train_images" / "train_images"),
+        ("kie_images", source_dir / "kie_data" / "kie_data" / "images"),
     ]
     if not txt_dir.exists():
         raise FileNotFoundError(f"Missing MC-OCR detection txt dir: {txt_dir}")
@@ -282,11 +305,14 @@ def export(args: argparse.Namespace) -> None:
     records: list[dict[str, Any]] = []
     missing_images = 0
     invalid_polygons = 0
+    image_source_counts: dict[str, int] = {}
     for txt_path in sorted(txt_dir.glob("*.txt")):
-        image_path = find_image(image_dirs, txt_path.stem)
-        if not image_path:
+        image_match = find_image(image_dirs, txt_path.stem)
+        if not image_match:
             missing_images += 1
             continue
+        image_source, image_path = image_match
+        image_source_counts[image_source] = image_source_counts.get(image_source, 0) + 1
         annotations = []
         for line in txt_path.read_text(encoding="utf-8", errors="replace").splitlines():
             points = parse_polygon_line(line)
@@ -337,6 +363,7 @@ def export(args: argparse.Namespace) -> None:
         "annotations": sum(len(record["annotations"]) for record in records),
         "missing_images": missing_images,
         "invalid_polygons": invalid_polygons,
+        "image_source_counts": image_source_counts,
         "splits": {
             "train": len(train_records),
             "val": len(val_records),
@@ -365,10 +392,10 @@ def main() -> None:
     parser.add_argument("--val-ratio", type=float, default=0.10)
     parser.add_argument("--test-ratio", type=float, default=0.10)
     parser.add_argument("--max-images", type=int, default=0)
-    parser.add_argument("--epoch-num", type=int, default=50)
+    parser.add_argument("--epoch-num", type=int, default=80)
     parser.add_argument("--eval-step", type=int, default=250)
-    parser.add_argument("--batch-size", type=int, default=4)
-    parser.add_argument("--learning-rate", type=float, default=0.0001)
+    parser.add_argument("--batch-size", type=int, default=2)
+    parser.add_argument("--learning-rate", type=float, default=0.00001)
     export(parser.parse_args())
 
 
